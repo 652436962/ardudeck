@@ -14,3 +14,7 @@ export * from './core/signing.js';
 
 // Re-export generated types
 export * from './generated/index.js';
+
+// Dialects. These are additive and must be registered explicitly, so a consumer that
+// does not want them never pays for them.
+export * from './dialects/ardudeck.js';

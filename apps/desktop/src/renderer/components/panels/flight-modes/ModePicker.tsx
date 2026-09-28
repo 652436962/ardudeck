@@ -11,6 +11,7 @@ import type { ArduPilotVehicleClass } from '../../../../shared/telemetry-types';
 import {
   FLIGHT_MODES,
   PX4_FLIGHT_MODES,
+  modesFromProfile,
   GROUP_LABEL,
   GROUP_ORDER,
   modeBlockedReason,
@@ -18,6 +19,8 @@ import {
   type ModeGateContext,
 } from '../../../../shared/flight-mode-meta';
 import { GROUP_ICON, modeIcon } from './mode-icons';
+import { useActiveVehicleStore } from '../../../stores/active-vehicle-store';
+import { useVehicleProfileStore } from '../../../stores/vehicle-profile-store';
 
 export interface ModePickerProps {
   /** The annunciator element the popover anchors under. */
@@ -136,10 +139,17 @@ function ModePickerImpl({
   }, [onClose, anchorRef]);
 
   const q = query.toLowerCase().trim();
-  const activeModes = useMemo(
-    () => (firmware === 'px4' ? PX4_FLIGHT_MODES : FLIGHT_MODES[vehicleClass]),
-    [firmware, vehicleClass],
+  // A vehicle running the ArduDeck Vehicle SDK names its own modes. Falling through to
+  // the ArduPilot table would offer it modes it does not have, and send numbers that
+  // mean something else on that firmware.
+  const activeVehicleKey = useActiveVehicleStore((s) => s.activeVehicleKey);
+  const declaredModes = useVehicleProfileStore(
+    (s) => (activeVehicleKey ? s.byVehicle[activeVehicleKey]?.modes : undefined),
   );
+  const activeModes = useMemo(() => {
+    if (declaredModes && declaredModes.length > 0) return modesFromProfile(declaredModes);
+    return firmware === 'px4' ? PX4_FLIGHT_MODES : FLIGHT_MODES[vehicleClass];
+  }, [declaredModes, firmware, vehicleClass]);
   const groups = useMemo(() => {
     return GROUP_ORDER
       .map((g) => ({ group: g, items: activeModes.filter((mm) => mm.group === g && mm.name.toLowerCase().includes(q)) }))

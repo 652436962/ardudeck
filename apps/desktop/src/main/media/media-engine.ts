@@ -32,14 +32,17 @@ import type {
   CameraStreamSession,
   CameraMediaActionResult,
   MediaEngineStatus,
+  CanvasStreamStartResult,
+  CanvasStreamStatus,
 } from '../../shared/camera-types.js';
+import { HUB_HOST, HUB_RTSP_PORT, HUB_WEBRTC_PORT, HUB_SRT_PORT } from '../../shared/camera-types.js';
 
 const API_PORT = 9997;
-const RTSP_PORT = 8554;
-const WEBRTC_PORT = 8889;
+const RTSP_PORT = HUB_RTSP_PORT;
+const WEBRTC_PORT = HUB_WEBRTC_PORT;
 const WEBRTC_UDP_PORT = 8189;
-const SRT_PORT = 8890;
-const HOST = '127.0.0.1';
+const SRT_PORT = HUB_SRT_PORT;
+const HOST = HUB_HOST;
 /** Bridged-ingest reconnect: base backoff, ceiling, and the wfb-rx rtp-stall window. */
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 5000;
@@ -348,6 +351,37 @@ export class MediaEngine {
 
   private rtspUrl(name: string): string {
     return `rtsp://${HOST}:${RTSP_PORT}/${name}`;
+  }
+
+  /**
+   * Bring the hub up so a renderer can publish into `name` over WHIP. MediaMTX
+   * creates the path on first publish and drops it when the publisher leaves.
+   */
+  async preparePublish(name: string): Promise<CanvasStreamStartResult> {
+    this.resolveBinaries();
+    if (!this.mediamtxPath) {
+      return { ok: false, needsInstall: true, error: this.getStatus().detail ?? 'Video engine not installed' };
+    }
+    if (!(await this.ensureHub())) {
+      return { ok: false, error: this.getStatus().detail ?? 'Media hub failed to start' };
+    }
+    return {
+      ok: true,
+      whipUrl: `http://${HOST}:${WEBRTC_PORT}/${name}/whip`,
+      rtspUrl: this.rtspUrl(name),
+    };
+  }
+
+  async publishStatus(name: string): Promise<CanvasStreamStatus> {
+    if (!this.hubReady) return { publishing: false, readers: 0 };
+    try {
+      const res = await fetch(`http://${HOST}:${API_PORT}/v3/paths/get/${encodeURIComponent(name)}`);
+      if (!res.ok) return { publishing: false, readers: 0 };
+      const info = (await res.json()) as { ready?: boolean; readers?: unknown[] };
+      return { publishing: info.ready === true, readers: info.readers?.length ?? 0 };
+    } catch {
+      return { publishing: false, readers: 0 };
+    }
   }
 
   /**

@@ -22,9 +22,17 @@ import type { AccelPosition } from '../../../../shared/calibration-types';
 import { useResolvedTheme } from '../../../hooks/useTheme';
 
 interface OrientationSceneProps {
-  position: AccelPosition;
+  /** Which of the six ArduPilot positions. Ignored when `target` is given. */
+  position?: AccelPosition;
   /** Draw a car instead of a quad on ground vehicles. */
   shape?: 'copter' | 'rover';
+  /**
+   * An explicit attitude to hold, in degrees, overriding `position`.
+   *
+   * A vehicle running the ArduDeck Vehicle SDK names its own poses and they need not be
+   * any of ArduPilot's six, so the target cannot always be looked up from a position id.
+   */
+  target?: { rollDeg: number; pitchDeg: number };
   /** Live vehicle attitude in radians. */
   roll: number;
   pitch: number;
@@ -126,17 +134,24 @@ function applyAttitude(object: THREE.Object3D, roll: number, pitch: number): voi
   object.rotateX(roll);
 }
 
-export function OrientationScene({ position, roll, pitch, live, size = 220, shape = 'copter' }: OrientationSceneProps) {
+export function OrientationScene({ position, roll, pitch, live, size = 220, shape = 'copter', target: explicitTarget }: OrientationSceneProps) {
   const isLight = useResolvedTheme() === 'light';
   const mountRef = useRef<HTMLDivElement | null>(null);
   const vehicleRef = useRef<THREE.Group | null>(null);
   const ghostRef = useRef<THREE.Group | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   // Latest attitude, read by the animation loop without re-running the effect.
-  const attitudeRef = useRef({ roll, pitch, live, position });
-  attitudeRef.current = { roll, pitch, live, position };
+  const attitudeRef = useRef({ roll, pitch, live, position, explicitTarget });
+  attitudeRef.current = { roll, pitch, live, position, explicitTarget };
 
-  const target = useMemo(() => targetForPosition(position), [position]);
+  const DEG = Math.PI / 180;
+  const target = useMemo(
+    () =>
+      explicitTarget
+        ? { roll: explicitTarget.rollDeg * DEG, pitch: explicitTarget.pitchDeg * DEG }
+        : targetForPosition(position ?? 0),
+    [position, explicitTarget, DEG],
+  );
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -186,7 +201,12 @@ export function OrientationScene({ position, roll, pitch, live, size = 220, shap
     const render = () => {
       frame = requestAnimationFrame(render);
       const current = attitudeRef.current;
-      const currentTarget = targetForPosition(current.position);
+      const currentTarget = current.explicitTarget
+        ? {
+            roll: current.explicitTarget.rollDeg * (Math.PI / 180),
+            pitch: current.explicitTarget.pitchDeg * (Math.PI / 180),
+          }
+        : targetForPosition(current.position ?? 0);
 
       applyAttitude(ghost, currentTarget.roll, currentTarget.pitch);
 

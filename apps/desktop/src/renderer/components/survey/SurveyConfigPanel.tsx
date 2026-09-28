@@ -68,6 +68,8 @@ import {
   UNIT_LABELS,
   UNIT_PRECISION,
 } from '../../../shared/user-units.js';
+import { useVehicleProfileStore } from '../../stores/vehicle-profile-store';
+import { AD_FEAT, supports } from '../../../shared/vehicle-profile';
 
 // Pattern catalog. Each entry advertises which modes it applies to so the UI
 // can filter without scattering conditional logic across the component.
@@ -117,6 +119,16 @@ function rehydrateUserPreset(p: PersistedSurveyPreset): SurveyPreset {
 }
 
 export function SurveyConfigPanel() {
+  // A vehicle that never declared terrain support will refuse a terrain-relative plan on
+  // upload, so offering it only wastes the operator's time drawing one.
+  const activeVehicleKey = useActiveVehicleStore((s) => s.activeVehicleKey);
+  const vehicleProfile = useVehicleProfileStore(
+    (s) => (activeVehicleKey ? s.byVehicle[activeVehicleKey] : undefined),
+  );
+  const altRefOptions = ALT_REF_OPTIONS.filter(
+    (opt) => opt.id !== 'terrain' || supports(vehicleProfile, AD_FEAT.TERRAIN),
+  );
+
   const polygon = useSurveyStore((s) => s.polygon);
   const config = useSurveyStore((s) => s.config);
   const result = useSurveyStore((s) => s.result);
@@ -1082,7 +1094,7 @@ export function SurveyConfigPanel() {
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-content-secondary w-14 flex-shrink-0">Alt Ref</span>
                   <div className="flex gap-1 flex-1">
-                    {ALT_REF_OPTIONS.map(opt => (
+                    {altRefOptions.map(opt => (
                       <button
                         key={opt.id}
                         onClick={() => setAltitudeReference(opt.id)}

@@ -1193,3 +1193,16 @@ select,
     transform: none;
   }
 }
+
+/* While a click places something on the map, the click belongs to the map and
+   not to a shape already drawn there. Leaflet puts `pointer-events: auto` on
+   the interactive elements themselves, and a descendant that re-enables them
+   still fires, so this has to name those elements rather than their pane. */
+.leaflet-container.map-picking {
+  cursor: crosshair;
+}
+.leaflet-container.map-picking .leaflet-interactive,
+.leaflet-container.map-picking .leaflet-marker-icon,
+.leaflet-container.map-picking .leaflet-marker-shadow {
+  pointer-events: none;
+}

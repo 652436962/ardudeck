@@ -240,6 +240,7 @@ import {
   ModulePolygonPick,
   ModulePolygonPickBar,
 } from '../panels/ModuleMapLayers';
+import { MapPicking } from '../../hooks/useMapPicking';
 
 // Default center fallback (London) - will be overridden by IP geolocation
 const FALLBACK_CENTER: [number, number] = [51.505, -0.09];
@@ -1220,6 +1221,15 @@ function MissionMapPanel2D({ readOnly = false }: MissionMapPanelProps) {
         <ViewportSync />
         {/* Cargo layers under the mission's own drawing, and the polygon
             picker a cargo can ask the pilot for. */}
+        <MapPicking
+          active={
+            isAddingWaypoint ||
+            isSettingHome ||
+            rallyAddMode ||
+            surveyDrawMode !== 'none' ||
+            fenceDrawMode !== 'none'
+          }
+        />
         <ModuleMapLayers />
         <ModulePolygonPick />
         <MapResizeHandler />

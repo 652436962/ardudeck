@@ -10,7 +10,7 @@
  * streamed from the DEM around the vehicle and rebuilt as it travels.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { OsdLayers } from '../../../shared/camera-types';
 import type { FleetVehicle } from '../../hooks/useFleet';
 import { useTelemetryStore } from '../../stores/telemetry-store';
@@ -70,6 +70,8 @@ interface SyntheticVisionViewProps {
   osd: OsdLayers;
   /** Grid mode: clicking the tile activates the vehicle. */
   onActivate?: () => void;
+  /** Rendered inside the view with its canvas and container, for the stream window's publisher. */
+  streamSlot?: (refs: { canvasRef: RefObject<HTMLCanvasElement>; containerRef: RefObject<HTMLDivElement> }) => ReactNode;
 }
 
 /** Beyond this a position sample is a teleport (new vehicle, first fix), not
@@ -168,7 +170,7 @@ function predictAtt(sample: Sample<AttSample>, now: number): AttSample {
   };
 }
 
-export function SyntheticVisionView({ vehicle, isPrimary, osd, onActivate }: SyntheticVisionViewProps) {
+export function SyntheticVisionView({ vehicle, isPrimary, osd, onActivate, streamSlot }: SyntheticVisionViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<SvtScene | null>(null);
@@ -592,6 +594,7 @@ export function SyntheticVisionView({ vehicle, isPrimary, osd, onActivate }: Syn
       title={onActivate ? 'Click to make active' : undefined}
     >
       <canvas ref={canvasRef} className="block h-full w-full" />
+      {streamSlot?.({ canvasRef, containerRef })}
 
       {position && <CameraOverlays vehicle={vehicle} isPrimary={isPrimary} osd={svtOsd} attitude={overlayAttitude} worldOverlay={worldOverlay} />}
 

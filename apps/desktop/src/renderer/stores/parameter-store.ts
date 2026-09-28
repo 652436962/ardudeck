@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Parameter, ParameterWithMeta, ParameterProgress, ParamValuePayload } from '../../shared/parameter-types.js';
 import { isReadOnlyParameter, generateFallbackDescription } from '../../shared/parameter-types.js';
 import { parameterBelongsToGroup } from '../../shared/parameter-groups.js';
+import { getDeclaredParamMeta } from './declared-param-meta';
 import { validateParameterValue, vehicleTypeToMavType, REBOOT_REQUIRED_OVERRIDES, type ParameterMetadataStore, type ValidationResult, type VehicleType } from '../../shared/parameter-metadata.js';
 import { createSearchRegex } from '../../shared/search-utils.js';
 import { useConnectionStore } from './connection-store';
@@ -371,6 +372,12 @@ export const useParameterStore = create<ParameterStore>((set, get) => ({
   },
 
   getParameterMetadata: (paramId: string) => {
+    // A vehicle running the ArduDeck Vehicle SDK sends its own units, ranges and one
+    // line of help. It wins over the bundled table, which is downloaded per vehicle
+    // type and has nothing to say about a firmware nobody published a table for.
+    const declared = getDeclaredParamMeta(paramId);
+    if (declared) return declared;
+
     const { metadata } = get();
     const meta = metadata?.[paramId];
     if (!meta) return null;

@@ -157,6 +157,22 @@ function pickDefaultBounds(initial?: DetachedWindowBounds): DetachedWindowBounds
  * spawning a duplicate — this keeps the UX predictable when the user double-
  * clicks a pop-out button.
  */
+/** Load the shared renderer entry with a query (`detached=1&componentId=…`), dev server or packaged file. */
+export function loadRendererRoute(win: BrowserWindow, params: URLSearchParams): void {
+  const query = `?${params.toString()}`;
+  const devUrl = process.env['ELECTRON_RENDERER_URL'];
+  if (devUrl) {
+    void win.loadURL(`${devUrl}/${query}`);
+  } else {
+    void win.loadFile(join(__dirname, '../renderer/index.html'), { search: query });
+  }
+}
+
+/** Absolute path of the preload bundle every app window uses. */
+export function preloadPath(): string {
+  return join(__dirname, '../preload/index.mjs');
+}
+
 export function openDetachedWindow(req: OpenDetachedRequest): string {
   const id = buildWindowId(req.componentId, req.instance);
   const existing = detached.get(id);
@@ -199,13 +215,7 @@ export function openDetachedWindow(req: OpenDetachedRequest): string {
   params.set('title', req.title);
   if (req.props) params.set('props', JSON.stringify(req.props));
 
-  const query = `?${params.toString()}`;
-  const devUrl = process.env['ELECTRON_RENDERER_URL'];
-  if (devUrl) {
-    win.loadURL(`${devUrl}/${query}`);
-  } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'), { search: query });
-  }
+  loadRendererRoute(win, params);
 
   win.on('ready-to-show', () => win.show());
 

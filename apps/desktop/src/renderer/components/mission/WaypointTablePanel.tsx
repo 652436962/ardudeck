@@ -65,6 +65,9 @@ import {
   type WaypointUnitContext,
 } from './waypoint-unit-format';
 import { computeRenderableIndices, renderableIndexOfSeq, estimateRowHeight } from './waypoint-list-window';
+import { useActiveVehicleStore } from '../../stores/active-vehicle-store';
+import { useVehicleProfileStore } from '../../stores/vehicle-profile-store';
+import { allowedMissionCommands } from '../../../shared/vehicle-profile';
 
 // Helper to get GPS state without subscribing (avoids re-renders)
 function getGpsState() {
@@ -476,11 +479,26 @@ function CommandDropdown({
   const popupRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   // iNav has only 8 commands total, no need for simple/advanced split
-  const groups = firmware === 'inav'
+  const baseGroups = firmware === 'inav'
     ? INAV_COMMAND_GROUPS
     : firmware === 'px4'
       ? (advanced ? PX4_COMMAND_GROUPS : PX4_SIMPLE_COMMAND_GROUPS)
       : advanced ? COMMAND_GROUPS : SIMPLE_COMMAND_GROUPS;
+
+  // A vehicle running the ArduDeck Vehicle SDK lists the mission commands it honours.
+  // Offering the rest means the operator plans a mission, sends it, and only then finds
+  // out the vehicle refuses it. A vehicle that never says keeps the full list.
+  const activeVehicleKey = useActiveVehicleStore((s) => s.activeVehicleKey);
+  const declaredCmds = useVehicleProfileStore(
+    (s) => (activeVehicleKey ? s.byVehicle[activeVehicleKey] : undefined),
+  );
+  const groups = useMemo(() => {
+    const allowed = allowedMissionCommands(declaredCmds);
+    if (!allowed) return baseGroups;
+    return baseGroups
+      .map((g) => ({ ...g, commands: g.commands.filter((c) => allowed.has(c.value)) }))
+      .filter((g) => g.commands.length > 0);
+  }, [baseGroups, declaredCmds]);
 
   // Current command label
   const currentCmd = ALL_AVAILABLE_COMMANDS.find(c => c.value === value);

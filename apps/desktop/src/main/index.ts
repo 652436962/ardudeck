@@ -17,6 +17,7 @@ import { initWindowManager, restoreDetachedWindows, setupWindowManagerIpc, getMa
 import { createSplashWindow, splashSetStatus, closeSplash } from './splash-window.js';
 import { Worker } from 'node:worker_threads';
 import Store from 'electron-store';
+import { registerArduDeckDialect } from '@ardudeck/mavlink-ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -310,6 +311,11 @@ function createWindow(splash?: BrowserWindow | null): BrowserWindow {
 app.whenReady().then(() => {
   // A second instance is quitting; don't open another window.
   if (!gotSingleInstanceLock) return;
+
+  // Before anything builds a parser: every MAVLinkParser is seeded from
+  // getAllMessageInfos(), so a vehicle-SDK message registered after that point would
+  // decode nowhere.
+  registerArduDeckDialect();
 
   // Set macOS dock icon
   if (process.platform === 'darwin') {

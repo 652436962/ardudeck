@@ -76,6 +76,12 @@ export const IPC_CHANNELS = {
   MISSION_VEHICLE_PROGRESS: 'mission:vehicle-progress',
   /** Main → renderer: a new (sysid, compid) was seen on a transport. */
   COMMS_VEHICLE_DISCOVERED: 'comms:vehicle-discovered',
+  /** A vehicle using the ArduDeck Vehicle SDK describing what it is and can do. */
+  COMMS_VEHICLE_PROFILE: 'comms:vehicle-profile',
+  /** Start, accept, cancel or save a calibration the vehicle declared. */
+  VEHICLE_CAL_CONTROL: 'vehicle:cal-control',
+  VEHICLE_CAL_PROGRESS: 'vehicle:cal-progress',
+  VEHICLE_CAL_RESULT: 'vehicle:cal-result',
   /** Main → renderer: a vehicle/transport is going away (session cleared). */
   COMMS_VEHICLE_LOST: 'comms:vehicle-lost',
 
@@ -352,6 +358,17 @@ export const IPC_CHANNELS = {
   MAVLINK_FORWARD_START: 'mavlink-forward:start',
   MAVLINK_FORWARD_STOP: 'mavlink-forward:stop',
   MAVLINK_FORWARD_STATUS: 'mavlink-forward:status',
+
+  // Rendered 3D views (sim world, synthetic vision) published over RTSP for external readers
+  CANVAS_STREAM_START: 'canvas-stream:start',
+  CANVAS_STREAM_STOP: 'canvas-stream:stop',
+  CANVAS_STREAM_STATUS: 'canvas-stream:status',
+  // The Vision stream renders in its own hidden window, so nothing drawn over a panel reaches it
+  VISION_STREAM_OPEN: 'vision-stream:open',
+  VISION_STREAM_CLOSE: 'vision-stream:close',
+  VISION_STREAM_REPORT: 'vision-stream:report',
+  VISION_STREAM_GET: 'vision-stream:get',
+  VISION_STREAM_CHANGED: 'vision-stream:changed',
 
   // MSP Connection (Betaflight/iNav/Cleanflight)
   MSP_CONNECT: 'msp:connect',
@@ -694,6 +711,11 @@ export const IPC_CHANNELS = {
   MODULE_CATALOG_DETAIL: 'module:catalog-detail',
   MODULE_INSTALL_FREE: 'module:install-free',
   MODULE_DEEP_LINK_INSTALL: 'module:deep-link-install',
+  MODULE_DEV_AVAILABLE: 'module:dev-available',
+  MODULE_DEV_LIST: 'module:dev-list',
+  MODULE_DEV_LOAD: 'module:dev-load',
+  MODULE_DEV_UNLOAD: 'module:dev-unload',
+  MODULE_DEV_CHANGED: 'module:dev-changed',
 
   // Hangar APPS: native programs the Hangar delivers, distinct from cargo modules.
   APP_CATALOG_LIST: 'app:catalog-list',

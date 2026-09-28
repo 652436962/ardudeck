@@ -71,7 +71,7 @@ function angleDelta(a: number, b: number): number {
  */
 export function matchOrientation(
   attitude: { roll: number; pitch: number },
-  target: TargetOrientation,
+  target: { roll: number; pitch: number },
   toleranceDeg: number = ORIENTATION_TOLERANCE_DEG,
 ): OrientationMatch {
   if (!Number.isFinite(attitude.roll) || !Number.isFinite(attitude.pitch)) {

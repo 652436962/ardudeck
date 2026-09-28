@@ -3,7 +3,7 @@
  * Handles communication between renderer and main process
  */
 
-import { ipcMain, BrowserWindow, dialog, app, shell, safeStorage } from 'electron';
+import { ipcMain, BrowserWindow, dialog, app, shell, safeStorage, session, webContents as allWebContents, type WebContents } from 'electron';
 import { join, dirname, basename } from 'path';
 import { existsSync, readFileSync, statSync } from 'fs';
 import { execFile as execFileCb } from 'node:child_process';
@@ -44,6 +44,12 @@ import {
 } from './ntrip/ntrip-ipc-handlers.js';
 import { getAllWindows, getMainWindow } from './window-manager.js';
 import { connectionRegistry } from './connection/connection-registry.js';
+import { ProfileCollector, isProfileMessage } from './vehicle-profile/profile-collector.js';
+import {
+  ARDUDECK_CAL_CONTROL_ID, ARDUDECK_CAL_CONTROL_CRC_EXTRA, serializeArdudeckCalControl,
+  ARDUDECK_CAL_PROGRESS_ID, deserializeArdudeckCalProgress,
+  ARDUDECK_CAL_RESULT_ID, deserializeArdudeckCalResult,
+} from '@ardudeck/mavlink-ts/dialect';
 import { OrchestrationServerLink } from './connection/orchestration-link.js';
 import { makeVehicleKey } from './connection/types.js';
 import type { TransportConfig, TransportEntry, TransportId, VehicleEntry } from './connection/types.js';
@@ -195,6 +201,8 @@ import { networkInterfaces } from 'node:os';
 import { sitlProcess } from './sitl/sitl-process.js';
 import { simEngineProcess } from './sim/sim-engine-process.js';
 import { mediaEngine } from './media/media-engine.js';
+import { CANVAS_STREAM_PATHS, type CanvasStreamSnapshot, type VisionStreamOpenOptions } from '../shared/camera-types.js';
+import { openVisionStreamWindow, closeVisionStreamWindow, reportVisionStream, visionStreamSnapshot } from './media/vision-stream-window.js';
 import { ardupilotSitlProcess, swarmSitlProcess, ardupilotSitlDownloader, ardupilotRcSender } from './sitl/index.js';
 import { px4SitlProcess, px4SitlDownloader } from './sitl/index.js';
 import { startSimHandoverServer, stopSimHandoverServer } from './sim/sim-handover-server.js';
@@ -1226,6 +1234,8 @@ let mavlinkBatchTimer: NodeJS.Timeout | null = null;
 // Source vehicleKey for the packet currently being parsed. Set at the top of
 // parseTelemetry and read by queueMavlinkTelemetry; safe because parseTelemetry
 // and every queue call it triggers run synchronously with no awaits between.
+const vehicleProfiles = new ProfileCollector();
+
 let parseVehicleKey = '__primary__';
 const PRIMARY_BATCH_KEY = '__primary__';
 
@@ -1345,6 +1355,10 @@ function clearPx4MotorTestTimers(): void {
  * Must be called BEFORE closing transport to prevent orphaned handlers
  */
 function cleanupTransportListeners(): void {
+  // A reconnect on the same key may be a different vehicle entirely, and inheriting a
+  // profile would mean showing screens for capabilities the new one never claimed.
+  vehicleProfiles.clear();
+
   if (currentTransport) {
     if (mavlinkDataHandler) {
       currentTransport.off('data', mavlinkDataHandler as (...args: unknown[]) => void);
@@ -2754,6 +2768,39 @@ function parseTelemetry(mainWindow: BrowserWindow, packet: MAVLinkPacket): void 
   parseVehicleKey = primaryTransportId
     ? makeVehicleKey(primaryTransportId, packet.sysid, packet.compid)
     : PRIMARY_BATCH_KEY;
+
+  // A vehicle running the ArduDeck Vehicle SDK describing itself. Handled before the
+  // switch because these ids are outside the common set and carry no telemetry.
+  if (msgid === ARDUDECK_CAL_PROGRESS_ID || msgid === ARDUDECK_CAL_RESULT_ID) {
+    try {
+      const full = new Uint8Array(msgid === ARDUDECK_CAL_PROGRESS_ID ? 79 : 85);
+      full.set(payload.subarray(0, full.length));
+      safeSend(
+        mainWindow,
+        msgid === ARDUDECK_CAL_PROGRESS_ID
+          ? IPC_CHANNELS.VEHICLE_CAL_PROGRESS
+          : IPC_CHANNELS.VEHICLE_CAL_RESULT,
+        {
+          vehicleKey: parseVehicleKey,
+          ...(msgid === ARDUDECK_CAL_PROGRESS_ID
+            ? deserializeArdudeckCalProgress(full)
+            : deserializeArdudeckCalResult(full)),
+        },
+      );
+    } catch { /* a malformed frame is one lost update, not a reason to stop */ }
+    return;
+  }
+
+  if (isProfileMessage(msgid)) {
+    const profile = vehicleProfiles.ingest(parseVehicleKey, msgid, payload);
+    if (profile) {
+      safeSend(mainWindow, IPC_CHANNELS.COMMS_VEHICLE_PROFILE, {
+        vehicleKey: parseVehicleKey,
+        profile,
+      });
+    }
+    return;
+  }
 
   // Log mission-related messages for debugging
   const missionMsgIds = [39, 40, 41, 42, 43, 44, 45, 46, 47, 51, 73];
@@ -4844,6 +4891,66 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle(IPC_CHANNELS.CAMERA_ENGINE_INSTALL, async () => {
     return mediaEngine.downloadBinaries((line) => safeSend(mainWindow, IPC_CHANNELS.CAMERA_ENGINE_INSTALL_LOG, line));
   });
+
+  // A streaming window keeps rendering while covered, or the stream freezes
+  // whenever another window sits on top of it. Refcounted: a restart's start can
+  // land before the previous publisher's stop.
+  const canvasStreamsBySender = new Map<number, number>();
+  const watchedSenders = new Set<number>();
+  // A reload or renderer crash never sends the matching stop, which would leave
+  // the window rendering at full rate while covered until the app restarts.
+  const resetCanvasStreaming = (sender: WebContents) => {
+    canvasStreamsBySender.delete(sender.id);
+    if (!sender.isDestroyed()) sender.setBackgroundThrottling(true);
+  };
+  const setCanvasStreaming = (sender: WebContents, on: boolean) => {
+    if (sender.isDestroyed()) return;
+    if (!watchedSenders.has(sender.id)) {
+      watchedSenders.add(sender.id);
+      const id = sender.id;
+      sender.on('did-start-navigation', (_e, _url, isInPlace, isMainFrame) => {
+        if (isMainFrame && !isInPlace) resetCanvasStreaming(sender);
+      });
+      sender.on('render-process-gone', () => resetCanvasStreaming(sender));
+      sender.once('destroyed', () => {
+        canvasStreamsBySender.delete(id);
+        watchedSenders.delete(id);
+      });
+    }
+    const count = Math.max(0, (canvasStreamsBySender.get(sender.id) ?? 0) + (on ? 1 : -1));
+    if (count) canvasStreamsBySender.set(sender.id, count); else canvasStreamsBySender.delete(sender.id);
+    sender.setBackgroundThrottling(count === 0);
+  };
+  // "With HUD" captures the window's own compositor output (tab capture, no OS
+  // screen-recording permission). Only an app main frame may capture itself, never a module frame.
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    const frame = request.frame;
+    const wc = frame ? allWebContents.fromFrame(frame) : undefined;
+    if (frame && wc && frame === wc.mainFrame && !frame.url.startsWith('ardudeck-module:')) callback({ video: frame });
+    else callback({});
+  });
+  ipcMain.handle(IPC_CHANNELS.CANVAS_STREAM_START, async (e, path: string) => {
+    if (!CANVAS_STREAM_PATHS.includes(path)) return { ok: false, error: `Unknown stream path ${path}` };
+    const result = await mediaEngine.preparePublish(path);
+    if (result.ok) {
+      setCanvasStreaming(e.sender, true);
+      sendLog(mainWindow, 'info', 'RTSP stream started', result.rtspUrl);
+    } else {
+      sendLog(mainWindow, 'error', `RTSP stream ${path} failed: ${result.error ?? 'unknown error'}`, mediaEngine.recentHubLog().join('\n'));
+    }
+    return result;
+  });
+  ipcMain.handle(IPC_CHANNELS.CANVAS_STREAM_STOP, (e) => {
+    setCanvasStreaming(e.sender, false);
+  });
+  ipcMain.handle(IPC_CHANNELS.VISION_STREAM_OPEN, (_e, opts: VisionStreamOpenOptions) => {
+    openVisionStreamWindow({ withHud: opts?.withHud !== false });
+  });
+  ipcMain.handle(IPC_CHANNELS.VISION_STREAM_CLOSE, () => closeVisionStreamWindow());
+  ipcMain.handle(IPC_CHANNELS.VISION_STREAM_REPORT, (e, next: CanvasStreamSnapshot) => reportVisionStream(e.sender, next));
+  ipcMain.handle(IPC_CHANNELS.VISION_STREAM_GET, () => visionStreamSnapshot());
+  ipcMain.handle(IPC_CHANNELS.CANVAS_STREAM_STATUS, (_e, path: string) =>
+    CANVAS_STREAM_PATHS.includes(path) ? mediaEngine.publishStatus(path) : { publishing: false, readers: 0 });
 
   ipcMain.handle(IPC_CHANNELS.CAMERA_GIMBAL_COMMAND, async (_, vehicleKey: string, cmd: GimbalCommand): Promise<boolean> => {
     try {
@@ -7526,7 +7633,10 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       // Skip it on PX4 outright: @PARAM/param.pck is an ArduPilot virtual
       // file, so on PX4 the fast path can only ever burn its open-timeout
       // before falling back — a guaranteed connect-time stall for nothing.
-      if (detectedMavlinkVersion === 2 && connectionState.firmware !== 'px4') {
+      // Same reasoning for a generic autopilot: a third-party firmware serving the
+      // Vehicle SDK has no FTP server, so the fast path is a stall it cannot win.
+      const genericAutopilot = connectionState.autopilotType === 0;
+      if (detectedMavlinkVersion === 2 && connectionState.firmware !== 'px4' && !genericAutopilot) {
         try {
           sendLog(mainWindow, 'info', 'Requesting parameters via MAVLink FTP (fast path)...');
           const ftpSuccess = await requestParamsViaFtp();
@@ -8227,6 +8337,35 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   // Symptom that drove us here: from a disarmed RTL state on a tailsitter,
   // legacy SET_MODE alone was being silently dropped — user couldn't get
   // out of RTL to arm. The COMMAND_LONG path resolves it.
+  // Start, accept, cancel or save a calibration the vehicle declared. The routine runs
+  // on the vehicle; this only carries the button press.
+  ipcMain.handle(
+    IPC_CHANNELS.VEHICLE_CAL_CONTROL,
+    async (_, calId: string, action: number): Promise<boolean> => {
+      const target = activeFlightTarget();
+      if (!target) return false;
+      try {
+        const payload = serializeArdudeckCalControl({
+          targetSystem: target.sysid,
+          targetComponent: 1,
+          calAction: action,
+          calId,
+        });
+        const packet = await sendMavlinkPacket(
+          ARDUDECK_CAL_CONTROL_ID, payload, ARDUDECK_CAL_CONTROL_CRC_EXTRA,
+          { link: target.transport },
+        );
+        await target.transport.write(packet);
+        connectionState.packetsSent++;
+        return true;
+      } catch (error) {
+        sendLog(mainWindow, 'error', 'Calibration control failed',
+          error instanceof Error ? error.message : 'Unknown error');
+        return false;
+      }
+    },
+  );
+
   ipcMain.handle(IPC_CHANNELS.MAVLINK_SET_MODE, async (_, customMode: number): Promise<boolean> => {
     const target = activeFlightTarget();
     if (!target) {

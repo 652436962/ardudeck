@@ -29,6 +29,7 @@ import { InspectorGraphsView } from '../components/inspector/InspectorGraphsView
 import { ObjectEditorApp } from '../area-editor/ObjectEditorApp';
 import SimWorldView from '../components/sim/SimWorldView';
 import { CameraPanel } from '../components/camera/CameraPanel';
+import { VisionStreamWindow } from '../components/camera/VisionStream';
 import { SafetyMonitorPanel } from '../components/panels/SafetyMonitorPanel';
 import { NtripPanel } from '../components/panels/NtripPanel';
 
@@ -58,6 +59,7 @@ export const COMPONENT_REGISTRY: Record<string, DetachedComponentDef> = {
   'area-editor': { Component: ObjectEditorApp as ComponentType<Record<string, unknown>>, defaultBounds: { width: 1400, height: 900 } },
   'sim-world': { Component: SimWorldView as ComponentType<Record<string, unknown>>, defaultBounds: { width: 1280, height: 800 } },
   camera: { Component: CameraPanel as ComponentType<Record<string, unknown>>, defaultBounds: { width: 960, height: 600 } },
+  'vision-stream': { Component: VisionStreamWindow as ComponentType<Record<string, unknown>>, defaultBounds: { width: 1280, height: 720 } },
   'safety-monitor': { Component: SafetyMonitorPanel as ComponentType<Record<string, unknown>>, defaultBounds: { width: 420, height: 520 } },
   rtk: { Component: NtripPanel as ComponentType<Record<string, unknown>>, defaultBounds: { width: 420, height: 560 } },
 };

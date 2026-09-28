@@ -813,6 +813,97 @@ const TAB_COLORS: Record<CargoTabId, { active: string; icon: string; badge: stri
 // Main View
 // ---------------------------------------------------------------------------
 
+function DevCargoSection() {
+  const [available, setAvailable] = useState(false);
+  const [items, setItems] = useState<{ slug: string; name: string; version: string; path: string }[]>([]);
+  const [error, setError] = useState('');
+
+  const refresh = async () => setItems(await window.electronAPI.moduleDevList());
+
+  useEffect(() => {
+    void (async () => {
+      const ok = await window.electronAPI.moduleDevAvailable();
+      setAvailable(ok);
+      if (ok) await refresh();
+    })();
+  }, []);
+
+  if (!available) return null;
+
+  return (
+    <div className="mt-8 rounded-lg border border-dashed border-amber-500/40 p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-semibold text-content">Developer</div>
+          <p className="mt-0.5 text-xs text-content-secondary">
+            Load a cargo straight from a folder. Rebuild and it reloads itself. Unpackaged
+            builds only, and it cannot unlock built-in features.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="rounded bg-surface-raised px-3 py-1.5 text-sm text-content hover:bg-surface-hover"
+          onClick={async () => {
+            const r = await window.electronAPI.moduleDevLoad();
+            setError(r.ok ? '' : (r.error ?? 'Could not load'));
+            await refresh();
+          }}
+        >
+          Load unpacked
+        </button>
+      </div>
+
+      {error && error !== 'Cancelled' && (
+        <div className="mt-2 text-xs text-red-400">{error}</div>
+      )}
+
+      {items.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          {items.map((m) => (
+            <div
+              key={m.slug}
+              className="flex items-center justify-between rounded border border-subtle px-3 py-2"
+            >
+              <div className="min-w-0">
+                <div className="truncate text-sm text-content">
+                  {m.name} <span className="text-content-tertiary">{m.version}</span>
+                </div>
+                <div className="truncate text-[11px] text-content-tertiary">{m.path}</div>
+              </div>
+              <div className="ml-3 flex shrink-0 items-center gap-3">
+                <button
+                  type="button"
+                  className="text-xs text-content-secondary hover:text-content"
+                  onClick={() =>
+                    window.dispatchEvent(
+                      new CustomEvent('ardudeck:reload-module', { detail: m.slug }),
+                    )
+                  }
+                >
+                  Reload
+                </button>
+                <button
+                  type="button"
+                  className="text-xs text-content-secondary hover:text-content"
+                  onClick={async () => {
+                    await window.electronAPI.moduleDevUnload(m.slug);
+                    await refresh();
+                  }}
+                >
+                  Unload
+                </button>
+              </div>
+            </div>
+          ))}
+          <p className="pt-1 text-[11px] text-content-tertiary">
+            Restart ArduDeck after loading or unloading so the main process picks it up.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ModuleManagerView() {
   const {
     modules,
@@ -1336,6 +1427,8 @@ export function ModuleManagerView() {
           )}
         </div>
       </div>
+
+      <DevCargoSection />
 
       {openDetailSlug && (() => {
         const detailCargo = catalog.find((c) => c.slug === openDetailSlug) ?? null;

@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { Camera, Circle, Layers, SlidersHorizontal } from 'lucide-react';
 import { useActiveVehicleStore } from '../../stores/active-vehicle-store';
 import { useFleetVehicles, type FleetVehicle } from '../../hooks/useFleet';
 import { useCameraStore } from '../../stores/camera-store';
@@ -21,6 +22,7 @@ import { CameraView } from './CameraView';
 import { SyntheticVisionView } from './SyntheticVisionView';
 import { CameraSourceMenu } from './CameraSourceMenu';
 import { GimbalPad } from './GimbalPad';
+import { VisionStreamControl } from './VisionStream';
 
 // Partial: the `waypoints` layer intentionally has no OSD toggle — the 3D
 // waypoint overlay is toggled from the HUD instruments editor (HudPanel) via the
@@ -34,6 +36,27 @@ const OSD_LABELS: Partial<Record<keyof OsdLayers, string>> = {
   hud: 'Flight HUD',
 };
 
+const ICON_BTN =
+  'flex h-6 w-6 items-center justify-center rounded text-content-secondary hover:bg-surface-raised disabled:opacity-40';
+
+function MenuItem({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[11px] text-content hover:bg-surface-raised"
+    >
+      {children}
+    </button>
+  );
+}
+
 export function CameraPanel() {
   const activeVehicleKey = useActiveVehicleStore((s) => s.activeVehicleKey);
   const setActive = useActiveVehicleStore((s) => s.setActive);
@@ -43,7 +66,7 @@ export function CameraPanel() {
   const { viewMode, renderMode, syntheticFallback, lockedVehicleKey, osd, gridCols } = store;
 
   const [showSources, setShowSources] = useState(false);
-  const [showTerrainMenu, setShowTerrainMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showOsdMenu, setShowOsdMenu] = useState(false);
   const [recordingSourceId, setRecordingSourceId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -164,41 +187,72 @@ export function CameraPanel() {
 
         <div className="flex-1" />
 
-        {/* Snapshot / Record — live feed only */}
+        {/* Capture — live feed only */}
         {renderMode === 'live' && (
           <>
-            <button onClick={handleSnapshot} disabled={!liveSourceId} className="rounded px-1.5 py-0.5 text-[11px] text-content-secondary hover:bg-surface-raised disabled:opacity-40" title="Snapshot">Snap</button>
+            <button onClick={handleSnapshot} disabled={!liveSourceId} className={ICON_BTN} data-tip="Snapshot">
+              <Camera className="h-3.5 w-3.5" />
+            </button>
             <button
               onClick={handleRecord}
               disabled={!liveSourceId}
-              className={`rounded px-1.5 py-0.5 text-[11px] disabled:opacity-40 ${recordingSourceId ? 'bg-red-500/20 text-red-300' : 'text-content-secondary hover:bg-surface-raised'}`}
-              title="Record"
-            >{recordingSourceId === liveSourceId ? '● Rec' : 'Rec'}</button>
+              className={`${ICON_BTN} ${recordingSourceId ? 'bg-red-500/20 text-red-300' : ''}`}
+              data-tip={recordingSourceId === liveSourceId ? 'Stop recording' : 'Record'}
+            >
+              <Circle className={`h-3 w-3 ${recordingSourceId === liveSourceId ? 'fill-current' : ''}`} />
+            </button>
           </>
         )}
 
-        {/* Synthetic-vision terrain options */}
-        {renderMode === 'synthetic' && (
-          <div className="relative flex items-center">
-            <button
-              onClick={() => setShowTerrainMenu((v) => !v)}
-              className="rounded px-1.5 py-0.5 text-[11px] text-content-secondary hover:bg-surface-raised"
-              title="Terrain imagery and detail"
-            >Terrain</button>
-            {showTerrainMenu && (
-              <>
-                <div className="fixed inset-0 z-30" onClick={() => setShowTerrainMenu(false)} />
-                <div className="absolute right-0 top-7 z-40 w-52 rounded-lg border border-default bg-surface-solid p-1.5 shadow-xl">
+        {renderMode === 'synthetic' && <VisionStreamControl />}
+
+        {/* What is drawn over the feed */}
+        <div className="relative flex items-center">
+          <button
+            onClick={() => setShowOsdMenu((v) => !v)}
+            className={`${ICON_BTN} ${store.showStats ? 'text-emerald-300' : ''}`}
+            data-tip="Overlays: OSD layers, link stats, terrain"
+          >
+            <Layers className="h-3.5 w-3.5" />
+          </button>
+          {showOsdMenu && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setShowOsdMenu(false)} />
+              <div className="absolute right-0 top-7 z-40 w-52 rounded-lg border border-default bg-surface-solid p-1.5 shadow-xl">
+                <div className="px-1.5 pb-1 text-[10px] uppercase tracking-wide text-content-tertiary">OSD layers</div>
+                {(Object.keys(OSD_LABELS) as (keyof OsdLayers)[]).map((k) => (
+                  <label key={k} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-[11px] text-content hover:bg-surface-raised">
+                    <input type="checkbox" checked={osd[k]} onChange={() => store.toggleOsd(k)} className="accent-blue-500" />
+                    {OSD_LABELS[k]}
+                  </label>
+                ))}
+
+                <div className="mt-1 border-t border-subtle pt-1">
                   <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-[11px] text-content hover:bg-surface-raised">
                     <input
                       type="checkbox"
-                      checked={store.svtSatellite}
-                      onChange={(e) => store.setSvtSatellite(e.target.checked)}
+                      checked={store.showStats}
+                      onChange={() => store.setShowStats(!store.showStats)}
                       className="accent-blue-500"
                     />
-                    Satellite imagery
+                    Link stats
                   </label>
+                  <div className="px-1.5 pb-1 text-[10px] leading-snug text-content-tertiary">
+                    Bitrate, framerate, packet loss and dropped frames over the feed.
+                  </div>
+                </div>
+
+                {renderMode === 'synthetic' && (
                   <div className="mt-1 border-t border-subtle pt-1">
+                    <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-[11px] text-content hover:bg-surface-raised">
+                      <input
+                        type="checkbox"
+                        checked={store.svtSatellite}
+                        onChange={(e) => store.setSvtSatellite(e.target.checked)}
+                        className="accent-blue-500"
+                      />
+                      Satellite imagery
+                    </label>
                     <div className="px-1.5 pb-1 text-[10px] uppercase tracking-wide text-content-tertiary">Terrain detail</div>
                     <div className="flex overflow-hidden rounded-md border border-subtle">
                       {(['low', 'medium', 'high'] as const).map((q) => (
@@ -211,56 +265,53 @@ export function CameraPanel() {
                       ))}
                     </div>
                     <div className="px-1.5 pt-1 text-[10px] leading-snug text-content-tertiary">
-                      Detail of the wider terrain. The ground nearest the aircraft always uses the sharpest imagery.
+                      The ground nearest the aircraft always uses the sharpest imagery.
                     </div>
                   </div>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        <button
-          onClick={async () => {
-            const text = await window.electronAPI.cameraDiagnostics();
-            await navigator.clipboard.writeText(text);
-            flash('Video diagnostics copied');
-          }}
-          className="rounded px-1.5 py-0.5 text-[11px] text-content-secondary hover:bg-surface-raised"
-          data-tip="Copy binary paths, versions, the hub and ffmpeg logs, and the active sessions, for a bug report"
-        >
-          Diag
-        </button>
-
-        <button
-          onClick={() => store.setShowStats(!store.showStats)}
-          className={`rounded px-1.5 py-0.5 text-[11px] hover:bg-surface-raised ${
-            store.showStats ? 'text-emerald-300' : 'text-content-secondary'
-          }`}
-          data-tip="Live link numbers over the feed: bitrate, framerate, packet loss, dropped frames"
-        >
-          Stats
-        </button>
-
-        {/* OSD layers */}
-        <div className="relative flex items-center">
-          <button onClick={() => setShowOsdMenu((v) => !v)} className="rounded px-1.5 py-0.5 text-[11px] text-content-secondary hover:bg-surface-raised" title="OSD layers">OSD</button>
-          {showOsdMenu && (
-            <>
-              <div className="fixed inset-0 z-30" onClick={() => setShowOsdMenu(false)} />
-              <div className="absolute right-0 top-7 z-40 w-40 rounded-lg border border-default bg-surface-solid p-1.5 shadow-xl">
-                {(Object.keys(OSD_LABELS) as (keyof OsdLayers)[]).map((k) => (
-                  <label key={k} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-[11px] text-content hover:bg-surface-raised">
-                    <input type="checkbox" checked={osd[k]} onChange={() => store.toggleOsd(k)} className="accent-blue-500" />
-                    {OSD_LABELS[k]}
-                  </label>
-                ))}
+                )}
               </div>
             </>
           )}
         </div>
 
-        <button onClick={() => setShowSources((v) => !v)} className="rounded px-1.5 py-0.5 text-[11px] text-content-secondary hover:bg-surface-raised" title="Configure feeds">Sources</button>
+        {/* Setup and support */}
+        <div className="relative flex items-center">
+          <button
+            onClick={() => setShowMoreMenu((v) => !v)}
+            className={ICON_BTN}
+            data-tip="Feeds and diagnostics"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+          </button>
+          {showMoreMenu && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setShowMoreMenu(false)} />
+              <div className="absolute right-0 top-7 z-40 w-48 rounded-lg border border-default bg-surface-solid p-1.5 shadow-xl">
+                <MenuItem
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                    setShowSources(true);
+                  }}
+                >
+                  Configure feeds
+                </MenuItem>
+                <MenuItem
+                  onClick={async () => {
+                    setShowMoreMenu(false);
+                    const text = await window.electronAPI.cameraDiagnostics();
+                    await navigator.clipboard.writeText(text);
+                    flash('Video diagnostics copied');
+                  }}
+                >
+                  Copy diagnostics
+                </MenuItem>
+                <div className="px-1.5 pt-1 text-[10px] leading-snug text-content-tertiary">
+                  Binary paths, versions, hub and ffmpeg logs, for a bug report.
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {engine && !engine.hubReady && engine.detail && (

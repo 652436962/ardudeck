@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Polyline, Polygon, Marker, useMapEvents } from 'react-leaflet';
+import { useMapPicking } from '../../hooks/useMapPicking';
 import L from 'leaflet';
 import type { MapFeature, MapPoint } from '@ardudeck/module-sdk';
 import {
@@ -155,6 +156,7 @@ export function useModuleMapLayerToggles(): {
 export function ModulePolygonPick(): JSX.Element | null {
   const [pick, setPick] = useState(getPolygonPick);
   useEffect(() => subscribeModuleMapLayers(() => setPick(getPolygonPick())), []);
+  useMapPicking(pick !== null);
 
   useEffect(() => {
     if (!pick) return;

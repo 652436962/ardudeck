@@ -9,6 +9,7 @@
  */
 
 import { protocol, app, net } from 'electron';
+import { getDevModulePath } from './module-dev.js';
 import { pathToFileURL } from 'node:url';
 import { join, resolve } from 'node:path';
 
@@ -40,7 +41,10 @@ export function setupModuleProtocol(): void {
         return new Response('Invalid module slug', { status: 400 });
       }
 
-      const baseDir = resolve(app.getPath('userData'), 'modules', slug, 'extracted');
+      const devPath = getDevModulePath(slug);
+      const baseDir = devPath
+        ? resolve(devPath)
+        : resolve(app.getPath('userData'), 'modules', slug, 'extracted');
       const target = resolve(baseDir, rel);
       if (!target.startsWith(baseDir)) {
         return new Response('Path traversal rejected', { status: 403 });

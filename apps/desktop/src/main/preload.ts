@@ -7,7 +7,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS, type ConnectOptions, type ConnectionState, type ConsoleLogEntry, type SavedLayout, type SettingsStoreSchema, type MSPConnectOptions, type MSPConnectionState, type MSPTelemetryData, type SitlConfig, type SitlStatus, type SitlExitData, type VirtualRCState, type ArduPilotSitlConfig, type ArduPilotSitlStatus, type ArduPilotSitlExitData, type ArduPilotSitlStartedData, type ArduPilotFlightGearConfig, type ArduPilotSitlDownloadProgress, type ArduPilotSitlBinaryInfo, type ArduPilotFrameCatalog, type ArduPilotVehicleType, type ArduPilotReleaseTrack, type Px4SitlConfig, type Px4SitlStatus, type Px4SitlExitData, type Px4SitlStartedData, type Px4SitlDownloadProgress, type Px4SitlBinaryInfo, type Px4ReleaseTrack, type SwarmSitlConfig, type SwarmSitlStatus, type SwarmInstanceStatus, type SwarmSitlLogLine, type AppUpdateInfo, type SigningStatus, type TelemetrySpeed, type LegacyStreamConsentRequest, type StatusMessage, type TileCacheStats, type TileCacheDownloadProgress, type TileCacheSettings, type TileCacheDownloadRegion, type CompanionConnectOptions, type CompanionConnectionIpcState, type CompanionDiscoveryResult, type TransportInfoIpc, type VehicleInfoIpc, type SetActiveSelectionPayload, type VehicleCommand, type MissionVehicleProgress, type OrchestrationIntentIpc, type OrchestrationStatusIpc, type OrchestratorSource, type OrchestratorStatus, type CameraSourceConfig, type CameraStartResult, type CameraMediaActionResult, type MediaEngineStatus, type GimbalCommand, type CameraCommand, type VideoStreamInfoIpc, type GimbalAttitudeIpc, type GimbalInfoIpc, type FrameBlueprintResult, type FrameBlueprintRequest } from '../shared/ipc-channels.js';
 import type { SigningAuditSnapshot } from '../shared/signing-audit-types.js';
 import type { StreamDiagnosis, ElrsModuleInfo, ElrsSetModeResult, ElrsProgressEvent } from '../shared/link-doctor-types.js';
-import type { WfbngStatus } from '../shared/camera-types.js';
+import type { WfbngStatus, CanvasStreamStartResult, CanvasStreamStatus, CanvasStreamSnapshot, VisionStreamOpenOptions } from '../shared/camera-types.js';
 import type { VehicleFlightHistory } from '../shared/fleet-log-types.js';
 import type { DetachedWindowInfo, OpenDetachedRequest } from '../shared/window-types.js';
 import type { ExportArea } from '../shared/kml-export.js';
@@ -36,6 +36,7 @@ import type { CalibrationData, CalibrationProgressEvent, CalibrationCompleteEven
 import type { MissionSummary, StoredMission, SaveMissionPayload, FlightLog, MissionListFilter, MissionSortOptions } from '../shared/mission-library-types.js';
 import type { SurveyDocument, SurveyDocumentSummary, SaveSurveyAreaPayload } from '../shared/survey-document-types.js';
 import type { VaultMission, VaultSurveyArea } from '../shared/ipc-channels.js';
+import type { VehicleProfile } from '../shared/vehicle-profile.js';
 import type { DroneBridgeInfo, DroneBridgeStats, DroneBridgeSettings, DroneBridgeClients, DroneBridgeDetected } from '../shared/dronebridge-types.js';
 import type { RainViewerMeta, AirspaceData, AirportData, GeocodeResult } from '../shared/overlay-types.js';
 import type {
@@ -475,6 +476,30 @@ const api = {
     const handler = (_: unknown, vehicle: VehicleInfoIpc) => callback(vehicle);
     ipcRenderer.on(IPC_CHANNELS.COMMS_VEHICLE_DISCOVERED, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.COMMS_VEHICLE_DISCOVERED, handler);
+  },
+
+  onVehicleProfile: (
+    callback: (payload: { vehicleKey: string; profile: VehicleProfile }) => void,
+  ) => {
+    const handler = (_: unknown, payload: { vehicleKey: string; profile: VehicleProfile }) =>
+      callback(payload);
+    ipcRenderer.on(IPC_CHANNELS.COMMS_VEHICLE_PROFILE, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.COMMS_VEHICLE_PROFILE, handler);
+  },
+
+  vehicleCalControl: (calId: string, action: number): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.VEHICLE_CAL_CONTROL, calId, action),
+
+  onVehicleCalProgress: (callback: (p: Record<string, unknown>) => void) => {
+    const handler = (_: unknown, p: Record<string, unknown>) => callback(p);
+    ipcRenderer.on(IPC_CHANNELS.VEHICLE_CAL_PROGRESS, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.VEHICLE_CAL_PROGRESS, handler);
+  },
+
+  onVehicleCalResult: (callback: (p: Record<string, unknown>) => void) => {
+    const handler = (_: unknown, p: Record<string, unknown>) => callback(p);
+    ipcRenderer.on(IPC_CHANNELS.VEHICLE_CAL_RESULT, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.VEHICLE_CAL_RESULT, handler);
   },
 
   onVehicleLost: (callback: (vehicleKey: string) => void) => {
@@ -1305,6 +1330,27 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.MAVLINK_FORWARD_STOP),
   mavlinkForwardStatus: (): Promise<unknown> =>
     ipcRenderer.invoke(IPC_CHANNELS.MAVLINK_FORWARD_STATUS),
+
+  // Rendered 3D view RTSP streams
+  canvasStreamStart: (path: string): Promise<CanvasStreamStartResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CANVAS_STREAM_START, path),
+  canvasStreamStop: (path: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CANVAS_STREAM_STOP, path),
+  canvasStreamStatus: (path: string): Promise<CanvasStreamStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CANVAS_STREAM_STATUS, path),
+  visionStreamOpen: (opts: VisionStreamOpenOptions): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.VISION_STREAM_OPEN, opts),
+  visionStreamClose: (): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.VISION_STREAM_CLOSE),
+  visionStreamReport: (snap: CanvasStreamSnapshot): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.VISION_STREAM_REPORT, snap),
+  visionStreamGet: (): Promise<CanvasStreamSnapshot> =>
+    ipcRenderer.invoke(IPC_CHANNELS.VISION_STREAM_GET),
+  onVisionStreamChanged: (callback: (snap: CanvasStreamSnapshot) => void) => {
+    const handler = (_: unknown, snap: CanvasStreamSnapshot) => callback(snap);
+    ipcRenderer.on(IPC_CHANNELS.VISION_STREAM_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.VISION_STREAM_CHANGED, handler);
+  },
 
   // Firmware event listeners
   onFlashProgress: (callback: (progress: FlashProgress) => void) => {
@@ -2398,6 +2444,20 @@ const api = {
 
   moduleInstallFree: (slug: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.MODULE_INSTALL_FREE, slug),
+
+  moduleDevAvailable: (): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.MODULE_DEV_AVAILABLE),
+  moduleDevList: (): Promise<{ slug: string; name: string; version: string; path: string }[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.MODULE_DEV_LIST),
+  moduleDevLoad: (): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.MODULE_DEV_LOAD),
+  moduleDevUnload: (slug: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.MODULE_DEV_UNLOAD, slug),
+  onModuleDevChanged: (callback: (slug: string) => void) => {
+    const handler = (_: unknown, slug: string) => callback(slug);
+    ipcRenderer.on(IPC_CHANNELS.MODULE_DEV_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.MODULE_DEV_CHANGED, handler);
+  },
 
   onModuleProgress: (callback: (progress: ModuleProgress) => void) => {
     const handler = (_: unknown, progress: ModuleProgress) => callback(progress);

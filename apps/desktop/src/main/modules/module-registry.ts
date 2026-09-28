@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseModuleManifest, type ModuleManifest } from '@ardudeck/module-sdk';
 import { getInstalledModules } from './module-manager.js';
+import { getDevModules } from './module-dev.js';
 import { loadModuleMain } from './module-loader.js';
 import { createMainHostApi } from './module-host-main.js';
 import { killAllForModule } from './module-pty-service.js';
@@ -19,7 +20,14 @@ export function getLoadedModules(): LoadedRecord[] {
 }
 
 export async function loadAllModules(): Promise<void> {
-  const installed = getInstalledModules();
+  const dev = getDevModules().map((d) => ({
+    slug: d.slug,
+    installPath: d.path,
+    activatable: false,
+    enabled: true,
+    entitled: true,
+  }));
+  const installed = [...getInstalledModules(), ...dev];
   for (const mod of installed) {
     // Activatable modules ship in the app - there is no bundle to load.
     if (mod.activatable) continue;

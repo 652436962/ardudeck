@@ -14,6 +14,7 @@ import { createSimWorldScene, type SimWorldScene, type SimCameraMode, type SimVe
 import { FlightControlPanel } from '../panels/FlightControlPanel';
 import ObstaclePanel from './ObstaclePanel';
 import SimTestPanel from './SimTestPanel';
+import { SimStreamControl } from './SimStreamControl';
 import { useSimObstaclesStore } from '../../stores/sim-obstacles-store';
 import { useMissionStore } from '../../stores/mission-store';
 import { useFenceStore } from '../../stores/fence-store';
@@ -989,6 +990,7 @@ export default function SimWorldView() {
         >
           HUD
         </button>
+        <SimStreamControl canvasRef={canvasRef} />
         <div className="flex overflow-hidden rounded-lg border border-subtle shadow-lg">
           {CAMERA_MODES.map((m) => (
             <button

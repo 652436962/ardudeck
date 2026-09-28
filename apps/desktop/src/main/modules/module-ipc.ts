@@ -3,7 +3,7 @@
  * Bridges renderer requests to module-manager orchestrator.
  */
 
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow, dialog } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipc-channels.js';
 import {
   activateLicense,
@@ -19,6 +19,13 @@ import {
   installFreeCargo,
 } from './module-manager.js';
 import { getLoadedModules, loadAllModules } from './module-registry.js';
+import {
+  getDevModules,
+  isDevLoadAvailable,
+  loadDevModule,
+  unloadDevModule,
+  watchDevModules,
+} from './module-dev.js';
 import { killPty, resizePty, spawnPty, writePty } from './module-pty-service.js';
 
 export function setupModuleIpc(mainWindow: BrowserWindow): void {
@@ -177,6 +184,31 @@ export function setupModuleIpc(mainWindow: BrowserWindow): void {
 
   ipcMain.handle(IPC_CHANNELS.MODULE_HOST_PTY_KILL, (_e, id: string) => killPty(id));
 
+  ipcMain.handle(IPC_CHANNELS.MODULE_DEV_AVAILABLE, () => isDevLoadAvailable());
+  ipcMain.handle(IPC_CHANNELS.MODULE_DEV_LIST, () => getDevModules());
+
+  ipcMain.handle(IPC_CHANNELS.MODULE_DEV_LOAD, async () => {
+    if (!isDevLoadAvailable()) return { ok: false, error: 'Not available in a packaged build' };
+    const picked = await dialog.showOpenDialog({
+      title: 'Load unpacked cargo',
+      message: 'Choose the folder holding module.json and the built renderer entry',
+      properties: ['openDirectory'],
+    });
+    if (picked.canceled || !picked.filePaths[0]) return { ok: false, error: 'Cancelled' };
+    const result = loadDevModule(
+      picked.filePaths[0],
+      getInstalledModules().map((m) => m.slug),
+    );
+    if (result.ok) startDevWatch();
+    return result;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.MODULE_DEV_UNLOAD, (_e, slug: string) => {
+    unloadDevModule(slug);
+    startDevWatch();
+    return { ok: true };
+  });
+
   // Before anything reads entitlements: an install made before receipts
   // existed is marked grandfathered so the upgrade cannot lock anyone out.
   migrateEntitlements();
@@ -191,5 +223,15 @@ export function setupModuleIpc(mainWindow: BrowserWindow): void {
   // Load all installed modules (background, non-blocking)
   loadAllModules().catch((err) => {
     console.error('[ModuleIPC] Load-all failed:', err);
+  });
+
+  startDevWatch();
+}
+
+function startDevWatch(): void {
+  watchDevModules((slug) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      w.webContents.send(IPC_CHANNELS.MODULE_DEV_CHANGED, slug);
+    }
   });
 }

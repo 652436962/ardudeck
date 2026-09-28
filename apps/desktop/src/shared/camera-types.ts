@@ -264,3 +264,82 @@ export type CameraViewMode = 'follow' | 'grid';
  *                  it works for any vehicle with a position fix.
  */
 export type CameraRenderMode = 'live' | 'synthetic';
+
+/** Hub paths a rendered 3D view publishes to, read back as rtsp://127.0.0.1:8554/<path>. */
+export const SIM_STREAM_PATH = 'sim_world';
+export const VISION_STREAM_PATH = 'vision';
+export const CANVAS_STREAM_PATHS: readonly string[] = [SIM_STREAM_PATH, VISION_STREAM_PATH];
+
+/** Media hub listeners, loopback only. */
+export const HUB_HOST = '127.0.0.1';
+export const HUB_RTSP_PORT = 8554;
+export const HUB_WEBRTC_PORT = 8889;
+export const HUB_SRT_PORT = 8890;
+
+export interface StreamReadUrl {
+  id: 'rtsp' | 'srt' | 'webrtc';
+  label: string;
+  url: string;
+  hint: string;
+}
+
+/** Every protocol the hub re-serves a published path over. */
+export function streamReadUrls(path: string): StreamReadUrl[] {
+  return [
+    { id: 'rtsp', label: 'RTSP', url: `rtsp://${HUB_HOST}:${HUB_RTSP_PORT}/${path}`, hint: 'VLC, ffmpeg, OpenCV, GStreamer' },
+    { id: 'srt', label: 'SRT', url: `srt://${HUB_HOST}:${HUB_SRT_PORT}?streamid=read:${path}`, hint: 'ffmpeg, OBS, VLC (H264 only)' },
+    { id: 'webrtc', label: 'WebRTC', url: `http://${HUB_HOST}:${HUB_WEBRTC_PORT}/${path}`, hint: 'Open in any browser, lowest latency' },
+  ];
+}
+
+/** Result of preparing the hub to accept a canvas WHIP publish. */
+export interface CanvasStreamStartResult {
+  ok: boolean;
+  whipUrl?: string;
+  rtspUrl?: string;
+  error?: string;
+  /** MediaMTX is not installed yet; the UI offers the one-time download. */
+  needsInstall?: boolean;
+}
+
+export interface CanvasStreamStatus {
+  /** The hub has a live publisher on the path. */
+  publishing: boolean;
+  /** RTSP / WebRTC clients currently reading it. */
+  readers: number;
+}
+
+export interface StreamPublishStats {
+  /** e.g. "VideoToolbox" (hardware) or "libvpx" / "OpenH264" (CPU). */
+  encoder: string | null;
+  hardware: boolean | null;
+  fps: number | null;
+  width: number | null;
+  height: number | null;
+  /** 'cpu' means the encoder cannot keep up; 'none' is healthy. */
+  limitedBy: string | null;
+}
+
+export type CanvasStreamState = 'idle' | 'starting' | 'live' | 'error';
+
+export interface CanvasStreamSnapshot {
+  state: CanvasStreamState;
+  rtspUrl: string | null;
+  codec: string | null;
+  readers: number;
+  error: string | null;
+  needsInstall: boolean;
+  stats: StreamPublishStats | null;
+}
+
+export const IDLE_STREAM: CanvasStreamSnapshot = {
+  state: 'idle', rtspUrl: null, codec: null, readers: 0, error: null, needsInstall: false, stats: null,
+};
+
+/** The hidden window that renders and publishes the Vision stream. */
+export const VISION_STREAM_SIZE = { width: 1280, height: 720 } as const;
+
+export interface VisionStreamOpenOptions {
+  /** Include HUD and OSD (window capture) instead of the bare terrain canvas. */
+  withHud: boolean;
+}

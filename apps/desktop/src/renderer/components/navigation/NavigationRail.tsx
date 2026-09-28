@@ -4,6 +4,9 @@ import { useConnectionStore } from '../../stores/connection-store';
 import { useSettingsStore, type ThemePreference } from '../../stores/settings-store';
 import { isViewAvailable, useEnabledCapabilitySlugs } from '../../modules/capabilities';
 import { useTrainerAvailable, useTrainerStore } from '../../stores/trainer-store';
+import { useActiveVehicleStore } from '../../stores/active-vehicle-store';
+import { useVehicleProfileStore } from '../../stores/vehicle-profile-store';
+import { viewAllowedForVehicle } from '../../../shared/vehicle-profile';
 
 interface NavItem {
   id: ViewId;
@@ -258,9 +261,17 @@ export function NavigationRail({ onViewChange }: NavigationRailProps) {
   useEffect(() => {
     void refreshTrainer();
   }, [refreshTrainer]);
+  // A vehicle running the ArduDeck Vehicle SDK says which of these it can serve. One
+  // that never says keeps every screen, so this changes nothing for ArduPilot or PX4.
+  const activeVehicleKey = useActiveVehicleStore((s) => s.activeVehicleKey);
+  const vehicleProfile = useVehicleProfileStore(
+    (s) => (activeVehicleKey ? s.byVehicle[activeVehicleKey] : undefined),
+  );
+
   const visibleNavItems = allNavItems.filter((item) =>
     (item.id === 'trainer' ? trainerAvailable : isViewAvailable(item.id, enabledCapabilitySlugs)) &&
-    !(isPx4 && arduPilotOnlyViews.has(item.id)),
+    !(isPx4 && arduPilotOnlyViews.has(item.id)) &&
+    viewAllowedForVehicle(item.id, vehicleProfile),
   );
 
   const handleClick = (viewId: ViewId) => {

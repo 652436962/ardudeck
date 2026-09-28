@@ -13,13 +13,16 @@
     "./registry": {
       "import": "./dist/generated/message-registry.js",
       "types": "./dist/generated/message-registry.d.ts"
+    },
+    "./dialect": {
+      "import": "./dist/dialects/ardudeck.js",
+      "types": "./dist/dialects/ardudeck.d.ts"
     }
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "generate": "node ../mavlink-generator/dist/index.js",
-
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "clean": "rm -rf dist"

@@ -243,3 +243,34 @@ export function modeSubline(meta: FlightModeMeta | undefined): string {
   if (meta.commit) bits.push('commit');
   return bits.join(' · ');
 }
+
+/**
+ * Flight modes a vehicle declared about itself, as the picker wants them.
+ *
+ * Without this a third firmware falls through to `FLIGHT_MODES[vehicleClass]`, so a boat
+ * is offered ArduPilot's rover modes and pressing one sends a number that means something
+ * different on the vehicle. That is worse than an empty picker.
+ *
+ * The group is a guess from the name, because the profile does not carry one: modes are
+ * only grouped to keep a long list readable, and a wrong heading is cosmetic where a
+ * wrong mode number is not. `AD_MODE_LOCAL_ONLY` modes are dropped entirely, since the
+ * vehicle said the ground station may not command them.
+ */
+export function modesFromProfile(
+  modes: ReadonlyArray<{ id: number; name: string; flags: number }>,
+): FlightModeMeta[] {
+  const AD_MODE_LOCAL_ONLY = 1 << 0;
+
+  const guessGroup = (name: string): ModeGroup => {
+    const n = name.toLowerCase();
+    if (/return|rtl|home|land/.test(n)) return 'return';
+    if (/manual|acro|stab/.test(n)) return 'manual';
+    if (/auto|mission|guided|run|survey|nav/.test(n)) return 'auto';
+    if (/tune/.test(n)) return 'tuning';
+    return 'assisted';
+  };
+
+  return modes
+    .filter((m) => (m.flags & AD_MODE_LOCAL_ONLY) === 0 && m.name.trim() !== '')
+    .map((m) => ({ modeNum: m.id, name: m.name, group: guessGroup(m.name) }));
+}
