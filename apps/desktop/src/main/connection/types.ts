@@ -95,6 +95,14 @@ export interface VehicleEntry {
   /** MAV_TYPE from the most recent heartbeat (0 until first heartbeat received). */
   mavType: number;
   /**
+   * MAV_AUTOPILOT from the most recent heartbeat: 3 ArduPilot, 12 PX4, 0 generic.
+   *
+   * Per-vehicle rather than read off `connectionState`, which only ever describes the
+   * primary connection. A fleet mixes firmwares, and mode numbers do not survive being
+   * borrowed from the wrong one.
+   */
+  autopilot: number;
+  /**
    * Board name resolved from AUTOPILOT_VERSION (e.g. "Pixhawk6C"), if known.
    * Matches the legacy `connectionState.boardId` semantics: the human-readable
    * board identifier, not the numeric `board_version` field.

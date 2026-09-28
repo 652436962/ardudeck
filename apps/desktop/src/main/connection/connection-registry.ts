@@ -132,7 +132,7 @@ export class ConnectionRegistry {
    *
    * Called for every MAVLink HEARTBEAT. If this is the first heartbeat for this
    * `(sysid, compid)` on this transport, a new `VehicleEntry` is created and
-   * `isNew` is true. Otherwise the existing entry's `mavType` and
+   * `isNew` is true. Otherwise the existing entry's `mavType`, `autopilot` and
    * `lastHeartbeatAt` are updated and `isNew` is false.
    *
    * Returns null only if the transport ID is unknown (defensive guard against
@@ -143,6 +143,7 @@ export class ConnectionRegistry {
     sysid: number,
     compid: number,
     mavType: number,
+    autopilot = 0,
   ): { vehicle: VehicleEntry; isNew: boolean } | null {
     const entry = this.transports.get(transportId);
     if (!entry) return null;
@@ -151,6 +152,7 @@ export class ConnectionRegistry {
     const existing = entry.vehicles.get(key);
     if (existing) {
       existing.mavType = mavType;
+      existing.autopilot = autopilot;
       existing.lastHeartbeatAt = Date.now();
       return { vehicle: existing, isNew: false };
     }
@@ -161,6 +163,7 @@ export class ConnectionRegistry {
       sysid,
       compid,
       mavType,
+      autopilot,
       boardId: null,
       boardUid: null,
       lastHeartbeatAt: Date.now(),

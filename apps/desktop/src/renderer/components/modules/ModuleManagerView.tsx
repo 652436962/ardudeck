@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, Boxes, Package, KeyRound, X, User, type LucideIcon } from 'lucide-react';
+import { Download, Boxes, Package, KeyRound, X, User, ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react';
 import { useModuleStore } from '../../stores/module-store';
 import { HangarApps } from './HangarApps';
 import type {
@@ -435,30 +435,201 @@ function BrowseCard({
 
 // One screenshot that quietly drops itself out of the gallery if its URL fails
 // to load, so a missing image never leaves a broken frame behind.
-function ScreenshotImage({ url, alt }: { url: string; alt?: string }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return null;
+/**
+ * Stage plus thumbnail strip, matching the Hangar listing. A stack of stills at
+ * their natural size reads badly when they are different shapes, which is what
+ * a panel shot next to a map shot always is.
+ */
+function ScreenshotGallery({ images }: { images: { url: string; alt?: string }[] }) {
+  const usable = images.filter((img) => !!img.url);
+  const [active, setActive] = useState(0);
+  const [broken, setBroken] = useState<Record<string, true>>({});
+  const [zoomed, setZoomed] = useState(false);
+  const stripRef = useRef<HTMLDivElement | null>(null);
+
+  const shown = usable.filter((img) => !broken[img.url]);
+  const index = Math.min(active, Math.max(0, shown.length - 1));
+  const go = (delta: number) => setActive((i) => (i + delta + shown.length) % shown.length);
+
+  useEffect(() => {
+    const thumb = stripRef.current?.children[index] as HTMLElement | undefined;
+    thumb?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  }, [index]);
+
+  if (shown.length === 0) return null;
+  const caption = shown[index]?.alt ?? '';
+
   return (
-    <img
-      src={url}
-      alt={alt ?? ''}
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className="w-full rounded-xl border border-subtle bg-surface-raised object-cover"
-    />
+    <div
+      className="space-y-3"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+        if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+      }}
+    >
+      <div
+        className="group relative cursor-zoom-in overflow-hidden rounded-xl border border-subtle bg-black"
+        onClick={() => setZoomed(true)}
+        role="button"
+        tabIndex={-1}
+        aria-label="View full size"
+      >
+        {/* Every slide mounted and cross-faded: swapping one src leaves a blank
+            frame for the length of the fetch. */}
+        <div className="relative aspect-video w-full">
+          {shown.map((img, i) => (
+            <img
+              key={img.url}
+              src={img.url}
+              alt={i === index ? (img.alt ?? '') : ''}
+              aria-hidden={i !== index}
+              loading="lazy"
+              onError={() => setBroken((b) => ({ ...b, [img.url]: true }))}
+              className="absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ease-out"
+              style={{ opacity: i === index ? 1 : 0 }}
+            />
+          ))}
+        </div>
+
+        {shown.length > 1 && (
+          <>
+            <GalleryArrow side="left" onClick={() => go(-1)} />
+            <GalleryArrow side="right" onClick={() => go(1)} />
+            <span className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/60 px-2 py-0.5 text-[11px] tabular-nums text-white/80">
+              {index + 1} / {shown.length}
+            </span>
+          </>
+        )}
+      </div>
+
+      {caption && <p className="text-xs text-content-tertiary">{caption}</p>}
+
+      {zoomed && shown[index] && (
+        <Lightbox
+          src={shown[index]!.url}
+          alt={shown[index]!.alt ?? ''}
+          position={`${index + 1} / ${shown.length}`}
+          onClose={() => setZoomed(false)}
+          onPrev={shown.length > 1 ? () => go(-1) : undefined}
+          onNext={shown.length > 1 ? () => go(1) : undefined}
+        />
+      )}
+
+      {shown.length > 1 && (
+        <div ref={stripRef} className="flex gap-2 overflow-x-auto pb-1">
+          {shown.map((img, i) => (
+            <button
+              key={`${img.url}-${i}`}
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActive(i); }}
+              aria-label={img.alt ?? `Screenshot ${i + 1}`}
+              className={`relative h-14 w-24 shrink-0 overflow-hidden rounded-lg border bg-black transition-colors ${
+                i === index ? 'border-blue-500' : 'border-subtle opacity-70 hover:opacity-100'
+              }`}
+            >
+              <img src={img.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
-function ScreenshotGallery({ images }: { images: { url: string; alt?: string }[] }) {
-  // A cargo without screenshots (or with an empty block) renders nothing at all.
-  const usable = images.filter((img) => !!img.url);
-  if (usable.length === 0) return null;
+/** Full-size view. Portalled so it escapes the detail modal's own stacking. */
+function Lightbox({
+  src,
+  alt,
+  position,
+  onClose,
+  onPrev,
+  onNext,
+}: {
+  src: string;
+  alt: string;
+  position: string;
+  onClose: () => void;
+  onPrev?: () => void;
+  onNext?: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowLeft') onPrev?.();
+      else if (e.key === 'ArrowRight') onNext?.();
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose, onPrev, onNext]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[4000] flex cursor-zoom-out flex-col items-center justify-center bg-black/85 p-6"
+      onClick={onClose}
+    >
+      <img
+        src={src}
+        alt={alt}
+        className="max-h-[calc(100vh-7rem)] max-w-[min(100vw-3rem,1600px)] cursor-default rounded-lg object-contain shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      />
+      {alt && <p className="mt-3 max-w-2xl text-center text-xs text-white/70">{alt}</p>}
+
+      <span className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] tabular-nums text-white/80">
+        {position}
+      </span>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onClose(); }}
+        aria-label="Close"
+        className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white/80 hover:bg-black/75 hover:text-white"
+      >
+        <X className="h-4 w-4" />
+      </button>
+      {onPrev && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onPrev(); }}
+          aria-label="Previous"
+          className="absolute left-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white/80 hover:bg-black/75 hover:text-white"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+      )}
+      {onNext && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onNext(); }}
+          aria-label="Next"
+          className="absolute right-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white/80 hover:bg-black/75 hover:text-white"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
+      )}
+    </div>,
+    document.body,
+  );
+}
+
+/** Half-hidden until the stage is hovered, so the picture is not permanently covered. */
+function GalleryArrow({ side, onClick }: { side: 'left' | 'right'; onClick: () => void }) {
+  const Icon = side === 'left' ? ChevronLeft : ChevronRight;
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      {usable.map((img, i) => (
-        <ScreenshotImage key={i} url={img.url} alt={img.alt} />
-      ))}
-    </div>
+    <button
+      type="button"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick(); }}
+      aria-label={side === 'left' ? 'Previous' : 'Next'}
+      className={`absolute top-1/2 -translate-y-1/2 ${side === 'left' ? 'left-2' : 'right-2'}
+        flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/50
+        text-white/80 opacity-0 transition-all hover:bg-black/75 hover:text-white
+        focus-visible:opacity-100 group-hover:opacity-100`}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
   );
 }
 

@@ -16,7 +16,7 @@
  *            asks for one confirm before sending, so a mis-click can't fire it.
  */
 
-import { encodePx4CustomMode, type ArduPilotVehicleClass } from './telemetry-types';
+import { encodePx4CustomMode, getVehicleClass, type ArduPilotVehicleClass } from './telemetry-types';
 
 export type ModeGroup = 'manual' | 'assisted' | 'auto' | 'return' | 'tuning';
 
@@ -273,4 +273,26 @@ export function modesFromProfile(
   return modes
     .filter((m) => (m.flags & AD_MODE_LOCAL_ONLY) === 0 && m.name.trim() !== '')
     .map((m) => ({ modeNum: m.id, name: m.name, group: guessGroup(m.name) }));
+}
+
+/**
+ * The mode to select before starting a mission, or null when there is nothing safe to send.
+ *
+ * Mode numbers are a firmware family's private convention. ArduPilot and PX4 are known,
+ * so their numbers come from the tables here. Any other firmware numbers its own modes
+ * and has to say which one flies a mission; without that, sending an ArduPilot number
+ * would command whatever that vehicle happens to number the same, which is how a boat
+ * ends up being told to enter Rover's AUTO.
+ *
+ * `autopilot` is MAV_AUTOPILOT from the heartbeat. Anything that is neither PX4 nor
+ * generic is treated as ArduPilot, which is what every vehicle got before this existed.
+ */
+export function missionAutoMode(
+  autopilot: number,
+  mavType: number,
+  declaredMissionMode: number | null,
+): number | null {
+  if (autopilot === 12) return encodePx4CustomMode(4, 4); // PX4 AUTO_MISSION
+  if (autopilot === 0) return declaredMissionMode;        // third-party: only what it declared
+  return MISSION_MODES[getVehicleClass(mavType)].auto;
 }

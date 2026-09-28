@@ -45,6 +45,8 @@ import {
 import { getAllWindows, getMainWindow } from './window-manager.js';
 import { connectionRegistry } from './connection/connection-registry.js';
 import { ProfileCollector, isProfileMessage } from './vehicle-profile/profile-collector.js';
+import { missionModeId } from '../shared/vehicle-profile.js';
+import { missionAutoMode } from '../shared/flight-mode-meta.js';
 import {
   ARDUDECK_CAL_CONTROL_ID, ARDUDECK_CAL_CONTROL_CRC_EXTRA, serializeArdudeckCalControl,
   ARDUDECK_CAL_PROGRESS_ID, deserializeArdudeckCalProgress,
@@ -1236,6 +1238,20 @@ let mavlinkBatchTimer: NodeJS.Timeout | null = null;
 // and every queue call it triggers run synchronously with no awaits between.
 const vehicleProfiles = new ProfileCollector();
 
+/**
+ * The mode to select before starting a mission on one specific vehicle.
+ *
+ * Splits into the firmware families here because the profile only exists for a
+ * third-party vehicle; ArduPilot and PX4 are read from their own tables.
+ */
+function missionModeForVehicle(
+  vehicleKey: string,
+  autopilot: number,
+  mavType: number,
+): number | null {
+  return missionAutoMode(autopilot, mavType, missionModeId(vehicleProfiles.get(vehicleKey)));
+}
+
 let parseVehicleKey = '__primary__';
 const PRIMARY_BATCH_KEY = '__primary__';
 
@@ -1826,7 +1842,7 @@ function createBackgroundDiscoveryHandler(
             const vehicleType = packet.payload[4]!;
             if (!isVehicleHeartbeat(vehicleType, packet.payload[5]!, packet.compid)) continue;
             const result = connectionRegistry.recordHeartbeat(
-              transportId, packet.sysid, packet.compid, vehicleType,
+              transportId, packet.sysid, packet.compid, vehicleType, packet.payload[5]!,
             );
             if (result?.isNew) {
               // Auto-promote the first discovered fleet vehicle to active so the
@@ -4829,15 +4845,22 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
           return await sendCommandLongToVehicle(vehicleKey, 176, { param1: 1 | armedBit, param2: cmd.customMode });
         }
         case 'mission-start': {
-          // A mission only runs in AUTO - copter/rover won't start one from MISSION_START
-          // alone. Switch the vehicle to AUTO (mode number by family) first, then send
+          // A mission only runs in the vehicle's mission mode - copter/rover won't start
+          // one from MISSION_START alone. Select that mode first, then send
           // MAV_CMD_MISSION_START. Needs the vehicle armed with a mission already uploaded.
           const veh = connectionRegistry.getVehicleByKey(vehicleKey);
-          const mt = veh?.mavType ?? 0;
-          const copterOrSub = [2, 3, 4, 12, 13, 14, 15, 29].includes(mt); // multirotor/heli + sub
-          const autoMode = copterOrSub ? 3 : 10;
-          await sendCommandLongToVehicle(vehicleKey, 176, { param1: 1, param2: autoMode });
-          await new Promise((r) => setTimeout(r, 300));
+          const autoMode = missionModeForVehicle(vehicleKey, veh?.autopilot ?? 0, veh?.mavType ?? 0);
+          // Null means the vehicle never said which of its own modes flies a mission, so
+          // there is nothing safe to send. MISSION_START still goes out: a firmware that
+          // needs no mode change runs it, and one that does answers with a refusal the
+          // operator can read. Guessing a number instead would command an unrelated mode.
+          if (autoMode !== null) {
+            await sendCommandLongToVehicle(vehicleKey, 176, { param1: 1, param2: autoMode });
+            await new Promise((r) => setTimeout(r, 300));
+          } else {
+            sendLog(mainWindow, 'warn', 'Mission start sent without a mode change',
+              'This vehicle did not declare which of its modes flies a mission (AD_MODE_MISSION).');
+          }
           return await sendCommandLongToVehicle(vehicleKey, 300, {});
         }
         default:
@@ -5375,6 +5398,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
               if (primaryTransportId) {
                 const discovered = connectionRegistry.recordHeartbeat(
                   primaryTransportId, packet.sysid, packet.compid, vehicleType,
+                  packet.payload[5]!,
                 );
                 if (discovered) {
                   if (connectionRegistry.getActiveVehicleKey() === null) {

@@ -32,6 +32,8 @@ export const AD_MODE_FLAG = {
   LOCAL_ONLY: 1 << 0,
   ARMED_ONLY: 1 << 1,
   TERMINAL: 1 << 2,
+  /** The mode that flies a mission. The vehicle marks exactly one. */
+  MISSION: 1 << 3,
 } as const;
 
 export const AD_PARAM_FLAG = {
@@ -213,4 +215,18 @@ export function allowedMissionCommands(
 ): ReadonlySet<number> | null {
   if (!profile || profile.missionCmds.length === 0) return null;
   return new Set(profile.missionCmds);
+}
+
+/**
+ * The mode this vehicle says flies a mission, or null if it never said.
+ *
+ * Starting a mission means selecting that mode first. For ArduPilot and PX4 the number
+ * is known from the firmware family; a third firmware numbers its own modes, so guessing
+ * would command whatever it happens to number the same. Null means "do not guess".
+ */
+export function missionModeId(profile: VehicleProfile | null | undefined): number | null {
+  const marked = profile?.modes.filter((m) => m.flags & AD_MODE_FLAG.MISSION) ?? [];
+  // Exactly one is the contract. Several is a vehicle bug, and picking one at random
+  // would launch a mission in a mode nobody chose.
+  return marked.length === 1 ? marked[0]!.id : null;
 }

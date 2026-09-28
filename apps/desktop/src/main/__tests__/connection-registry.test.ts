@@ -87,6 +87,21 @@ describe('ConnectionRegistry', () => {
       expect(result?.vehicle.key).toBe(makeVehicleKey(id, 1, 1));
     });
 
+    it('records the autopilot so a fleet can mix firmwares', () => {
+      const id = registry.register(fakeTransport(), fakeParser(), fakeConfig);
+      // A third-party vehicle reports MAV_AUTOPILOT_GENERIC, which is how mission start
+      // knows not to send it an ArduPilot mode number.
+      expect(registry.recordHeartbeat(id, 1, 1, 11, 0)?.vehicle.autopilot).toBe(0);
+      expect(registry.recordHeartbeat(id, 2, 1, 2, 3)?.vehicle.autopilot).toBe(3);
+      expect(registry.recordHeartbeat(id, 3, 1, 2, 12)?.vehicle.autopilot).toBe(12);
+    });
+
+    it('updates the autopilot when a vehicle re-identifies', () => {
+      const id = registry.register(fakeTransport(), fakeParser(), fakeConfig);
+      registry.recordHeartbeat(id, 1, 1, 2, 0);
+      expect(registry.recordHeartbeat(id, 1, 1, 2, 3)?.vehicle.autopilot).toBe(3);
+    });
+
     it('recordHeartbeat returns isNew=false on subsequent heartbeats', () => {
       const id = registry.register(fakeTransport(), fakeParser(), fakeConfig);
       registry.recordHeartbeat(id, 1, 1, 2);
