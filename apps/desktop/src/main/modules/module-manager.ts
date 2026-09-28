@@ -9,9 +9,15 @@ import { join } from 'node:path';
 import { app } from 'electron';
 import Store from 'electron-store';
 import { parseModuleManifest } from '@ardudeck/module-sdk';
-import { verifyLicenseKey, verifyBundleSignature } from './license-validator.js';
+import {
+  verifyLicenseKey,
+  verifyBundleSignature,
+  isLicenseKeyShaped,
+  verifyReceipt,
+} from './license-validator.js';
 import * as hangar from './hangar-client.js';
 import { extractBundle } from './module-extract.js';
+import { entitledSlugs } from './entitlements.js';
 import type {
   CargoDetail,
   InstalledModule,
@@ -28,6 +34,8 @@ interface ModuleStoreSchema {
   deviceId: string;
   modules: InstalledModule[];
   licenseKeys: string[]; // all activated keys
+  receipts: string[];
+  grandfathered: boolean;
 }
 
 const store = new Store<ModuleStoreSchema>({
@@ -36,6 +44,8 @@ const store = new Store<ModuleStoreSchema>({
     deviceId: '',
     modules: [],
     licenseKeys: [],
+    receipts: [],
+    grandfathered: false,
   },
 });
 
@@ -121,6 +131,8 @@ export async function activateLicense(
     onProgress({ stage: 'error', message: activateResult.error || 'Activation rejected' });
     return { success: false, error: activateResult.error || 'Activation rejected' };
   }
+
+  if (activateResult.receipt) storeReceipt(activateResult.receipt);
 
   // 3. Download each module bundle (activatable modules ship in the app, so
   //    they are enabled in place - no download/extract).
@@ -305,7 +317,42 @@ export async function installFreeCargo(
 // Get Installed Modules
 // --------------------------------------------------------------------------
 
+export function storeReceipt(receipt: string): void {
+  const deviceId = getDeviceId();
+  const fresh = verifyReceipt(receipt, deviceId);
+  if (!fresh.valid || !fresh.payload) return;
+  const kept = store.get('receipts').filter((r) => {
+    const existing = verifyReceipt(r, deviceId);
+    return !existing.valid || existing.payload?.licenseId !== fresh.payload!.licenseId;
+  });
+  store.set('receipts', [...kept, receipt]);
+  if (store.get('grandfathered')) store.set('grandfathered', false);
+}
+
+export function migrateEntitlements(): void {
+  if (store.get('receipts').length > 0) return;
+  if (store.get('grandfathered')) return;
+  if (store.get('modules').length === 0) return;
+  store.set('grandfathered', true);
+  console.log('[ModuleManager] pre-receipt install, grandfathered until next Hangar contact');
+}
+
+export function getEntitlements(): { slugs: Set<string>; provisional: boolean } {
+  const modules = store.get('modules');
+  return entitledSlugs({
+    receipts: store.get('receipts'),
+    deviceId: getDeviceId(),
+    grandfathered: store.get('grandfathered'),
+    installedSlugs: modules.map((m) => m.slug),
+  });
+}
+
 export function getInstalledModules(): InstalledModule[] {
+  const { slugs } = getEntitlements();
+  return store.get('modules').map((m) => ({ ...m, entitled: slugs.has(m.slug) }));
+}
+
+export function getInstalledModulesRaw(): InstalledModule[] {
   return store.get('modules');
 }
 
@@ -332,6 +379,10 @@ export function setModuleEnabled(slug: string, enabled: boolean): InstalledModul
  * `latest`, verifies hash + signature, extracts over the install path, and
  * replaces the store record - so update is the same flow, keyed by slug.
  * Note: a key covering a bundle updates every module of that bundle.
+ *
+ * A free cargo has no key on record (early free installs stored an empty
+ * string), so it asks the Hangar for a fresh one rather than trying to verify
+ * nothing, which is how updating a free cargo came back "Invalid key format".
  */
 export async function updateModule(
   slug: string,
@@ -340,6 +391,9 @@ export async function updateModule(
   const installed = store.get('modules').find((m) => m.slug === slug);
   if (!installed) {
     return { success: false, error: `Module ${slug} is not installed` };
+  }
+  if (!installed.licenseKey || !isLicenseKeyShaped(installed.licenseKey)) {
+    return installFreeCargo(slug, onProgress);
   }
   return activateLicense(installed.licenseKey, onProgress, { reactivate: true });
 }
@@ -411,6 +465,7 @@ export async function heartbeatAll(): Promise<void> {
       // Only an explicit revocation removes anything: `valid: false` also means
       // "this Hangar has never seen the key", which a dev build pointed at the
       // local Hangar answers for every production key.
+      if (result.receipt) storeReceipt(result.receipt);
       if (result.revoked === true) {
         console.warn(`[ModuleManager] License ${key.slice(0, 20)}... was revoked, removing its modules`);
         const currentModules = store.get('modules');

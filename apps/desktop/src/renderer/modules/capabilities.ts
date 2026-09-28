@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { ViewId } from '../stores/navigation-store';
 import { useModuleStore } from '../stores/module-store';
+import type { InstalledModule } from '../../shared/module-types';
 
 /**
  * Built-in features gated behind Hangar cargo.
@@ -40,6 +41,8 @@ export function isWeatherBriefingAvailable(): boolean {
 }
 /** Cargo slug that enables the Mission Library surface. */
 export const MISSION_LIBRARY_CARGO_SLUG = 'com.ardudeck.mission-library';
+/** Cargo slug that enables the Lua Graph Editor view. */
+export const LUA_GRAPH_CARGO_SLUG = 'com.ardudeck.lua-graph';
 // Public API-key Claude Advisor cargo. Enables both the live advisor panel and
 // the AI flight-log analysis surfaces. Note the slug is `ardudeck.advisor`, NOT
 // the `com.ardudeck.*` convention used by the other cargo above.
@@ -69,6 +72,8 @@ export const CAPABILITIES: Capability[] = [
   // Pre-Flight Weather Briefing: nav view plus the "View in detail" button on
   // the Vehicle & Status weather card (gated via isWeatherBriefingAvailable).
   { slug: WEATHER_CARGO_SLUG, viewId: 'weather' },
+  // Lua Graph Editor: one self-contained view, nothing embedded elsewhere.
+  { slug: LUA_GRAPH_CARGO_SLUG, viewId: 'lua-graph' },
 ];
 
 const GATED_VIEWS: ReadonlyMap<ViewId, string> = new Map(
@@ -81,18 +86,22 @@ export function isViewAvailable(viewId: ViewId, enabledSlugs: ReadonlySet<string
   return !requiredSlug || enabledSlugs.has(requiredSlug);
 }
 
+function usable(m: InstalledModule): boolean {
+  return m.enabled !== false && m.entitled !== false;
+}
+
 /** Reactive: true when the given cargo is installed and not toggled off. */
 export function useCargoEnabled(slug: string): boolean {
   const modules = useModuleStore((s) => s.modules);
   return useMemo(
-    () => modules.some((m) => m.slug === slug && m.enabled !== false),
+    () => modules.some((m) => m.slug === slug && usable(m)),
     [modules, slug],
   );
 }
 
 /** Non-hook variant for imperative call sites (event handlers, stores). */
 export function isCargoEnabled(slug: string): boolean {
-  return useModuleStore.getState().modules.some((m) => m.slug === slug && m.enabled !== false);
+  return useModuleStore.getState().modules.some((m) => m.slug === slug && usable(m));
 }
 
 /** Ids from the chosen Capability field whose gating cargo is missing or off. */
@@ -103,7 +112,7 @@ function useGatedOffIds(field: 'hudWidgets' | 'osdElements'): ReadonlySet<string
     for (const cap of CAPABILITIES) {
       const ids = cap[field];
       if (!ids?.length) continue;
-      const enabled = modules.some((m) => m.slug === cap.slug && m.enabled !== false);
+      const enabled = modules.some((m) => m.slug === cap.slug && usable(m));
       if (!enabled) for (const id of ids) off.add(id);
     }
     return off;
@@ -129,7 +138,7 @@ export function useGatedOffOsdElements(): ReadonlySet<string> {
 export function useEnabledCapabilitySlugs(): ReadonlySet<string> {
   const modules = useModuleStore((s) => s.modules);
   return useMemo(
-    () => new Set(modules.filter((m) => m.enabled !== false).map((m) => m.slug)),
+    () => new Set(modules.filter(usable).map((m) => m.slug)),
     [modules],
   );
 }

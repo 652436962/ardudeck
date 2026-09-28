@@ -5,7 +5,7 @@
 
 import { verify, createPublicKey, createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import type { LicensePayload } from '../../shared/module-types.js';
+import type { LicensePayload, ReceiptPayload } from '../../shared/module-types.js';
 
 /**
  * Ed25519 public key in SPKI PEM format - the production Hangar signing key.
@@ -29,6 +29,17 @@ function getPublicKey() {
  * Format: ARDUDECK.{base64url(payload)}.{base64url(signature)}
  * (dot separator: base64url alphabet contains `-` and `_` so they cannot split the key)
  */
+/**
+ * Whether a string even looks like a key, without touching crypto. A free
+ * cargo can be installed with no key on record, and that is not a broken key,
+ * it is a different install path.
+ */
+export function isLicenseKeyShaped(key: string | null | undefined): boolean {
+  if (!key) return false;
+  const parts = key.split('.');
+  return parts.length === 3 && parts[0] === 'ARDUDECK' && !!parts[1] && !!parts[2];
+}
+
 export function verifyLicenseKey(
   key: string,
 ): { valid: boolean; payload?: LicensePayload; error?: string } {
@@ -82,5 +93,48 @@ export function verifyBundleSignature(
     return verify(null, hash, publicKey, sigBuf);
   } catch {
     return false;
+  }
+}
+
+const RECEIPT_PREFIX = 'ADRCPT';
+
+export function verifyReceipt(
+  receipt: string,
+  deviceId: string,
+  opts: { now?: Date; publicKeyPem?: string } = {},
+): { valid: boolean; payload?: ReceiptPayload; error?: string } {
+  const now = opts.now ?? new Date();
+  const publicKey = opts.publicKeyPem ? createPublicKey(opts.publicKeyPem) : getPublicKey();
+  const parts = receipt.split('.');
+  if (parts.length !== 3 || parts[0] !== RECEIPT_PREFIX) {
+    return { valid: false, error: 'Not a receipt' };
+  }
+  const payloadB64 = parts[1]!;
+  const sigB64 = parts[2]!;
+
+  try {
+    const ok = verify(
+      null,
+      Buffer.from(`receipt.v1.${payloadB64}`, 'utf-8'),
+      publicKey,
+      Buffer.from(sigB64, 'base64url'),
+    );
+    if (!ok) return { valid: false, error: 'Invalid signature' };
+
+    const payload = JSON.parse(
+      Buffer.from(payloadB64, 'base64url').toString('utf-8'),
+    ) as ReceiptPayload;
+
+    if (payload.v !== 1) return { valid: false, payload, error: 'Unsupported receipt version' };
+    if (!Array.isArray(payload.slugs)) return { valid: false, payload, error: 'No slugs' };
+    if (payload.deviceId !== deviceId) {
+      return { valid: false, payload, error: 'Receipt belongs to another device' };
+    }
+    if (payload.expiresAt && new Date(payload.expiresAt) < now) {
+      return { valid: false, payload, error: 'Receipt has expired' };
+    }
+    return { valid: true, payload };
+  } catch (err) {
+    return { valid: false, error: `Verification failed: ${err}` };
   }
 }

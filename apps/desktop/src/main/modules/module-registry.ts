@@ -25,6 +25,7 @@ export async function loadAllModules(): Promise<void> {
     if (mod.activatable) continue;
     // User-disabled cargo stays installed but never loads.
     if (mod.enabled === false) continue;
+    if (mod.entitled === false) continue;
     if (!mod.installPath) {
       console.warn(`[ModuleRegistry] skipping ${mod.slug}: no installPath`);
       continue;

@@ -11,6 +11,7 @@ import {
   removeLicense,
   checkForUpdates,
   heartbeatAll,
+  migrateEntitlements,
   updateModule,
   setModuleEnabled,
   listPublicCargos,
@@ -175,6 +176,10 @@ export function setupModuleIpc(mainWindow: BrowserWindow): void {
   );
 
   ipcMain.handle(IPC_CHANNELS.MODULE_HOST_PTY_KILL, (_e, id: string) => killPty(id));
+
+  // Before anything reads entitlements: an install made before receipts
+  // existed is marked grandfathered so the upgrade cannot lock anyone out.
+  migrateEntitlements();
 
   // Run heartbeat on app launch (background, non-blocking)
   setTimeout(() => {

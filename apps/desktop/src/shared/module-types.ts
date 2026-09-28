@@ -17,6 +17,7 @@ export interface InstalledModule {
   activatable?: boolean; // built-in feature enabled by license, no bundle downloaded
   /** User toggle: false = keep installed but don't load. Absent means enabled. */
   enabled?: boolean;
+  entitled?: boolean;
 }
 
 /** License key payload (decoded from key, verified with Ed25519) */
@@ -28,6 +29,15 @@ export interface LicensePayload {
   expiresAt?: string;
   maxVersion?: string;
   issuedAt: string;
+}
+
+export interface ReceiptPayload {
+  v: 1;
+  slugs: string[];
+  deviceId: string;
+  licenseId: string;
+  issuedAt: string;
+  expiresAt?: string;
 }
 
 /** Progress event pushed from main to renderer during activation */
@@ -45,12 +55,14 @@ export interface ActivateResponse {
   // Subset of `modules` whose code already ships in the app - enable in place
   // instead of downloading a bundle.
   activatable?: string[];
+  receipt?: string;
   error?: string;
 }
 
 export interface HeartbeatResponse {
   valid: boolean;
   revoked?: boolean;
+  receipt?: string;
 }
 
 /**
