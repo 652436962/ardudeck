@@ -13,8 +13,21 @@ import {
   getCurrentVaultUnit,
   subscribeCurrentVaultUnit,
 } from '../stores/fleet-repo-store';
+import { raiseModuleAlert, clearModuleAlert, clearModuleAlertsFor } from './module-alert-registry';
+import { proposeFence, cancelProposalsFor } from './module-proposal-registry';
+import { summariseFence, replaceInclusion } from './module-fence-write';
+import {
+  openModuleMissionPanel,
+  registerModuleMissionPanel,
+  unregisterModuleMissionPanel,
+  unregisterModuleMissionPanelsFor,
+} from './module-mission-panel-registry';
+import { useFenceStore } from '../stores/fence-store';
+import { useModuleStore } from '../stores/module-store';
+import { getElevation, getElevations } from '../utils/elevation-api';
 import {
   registerModuleMapLayer,
+  startPolygonPick,
   unregisterModuleMapLayer,
   unregisterModuleMapLayersFor,
 } from './module-map-registry';
@@ -66,6 +79,21 @@ function currentHudProjection(): HudProjection | null {
 // Which generator ids each module registered, so a module can only remove its
 // own and a future module-unload path can sweep them all.
 const surveyGeneratorsBySlug = new Map<string, Set<string>>();
+
+/** Remove every mission panel a module registered (module unload/reload). */
+export function unregisterModuleMissionPanelsForSlug(slug: string): void {
+  unregisterModuleMissionPanelsFor(slug);
+}
+
+/** Withdraw anything a module has waiting on the pilot (module unload/reload). */
+export function cancelModuleProposalsForSlug(slug: string): void {
+  cancelProposalsFor(slug);
+}
+
+/** Withdraw every alert a module raised (module unload/reload). */
+export function clearModuleAlertsForSlug(slug: string): void {
+  clearModuleAlertsFor(slug);
+}
 
 /** Remove every map layer a module registered (module unload/reload). */
 export function unregisterModuleMapLayersForSlug(slug: string): void {
@@ -218,9 +246,49 @@ export function createRendererHostApi(
         ),
     },
 
+    missionWorkspace: {
+      registerPanel: (reg) => registerModuleMissionPanel(slug, reg),
+      unregisterPanel: (id) => unregisterModuleMissionPanel(slug, id),
+      openPanel: (id) => openModuleMissionPanel(slug, id),
+    },
+
+    vehicle: {
+      proposeFence: async (proposal) => {
+        const name = useModuleStore.getState().modules.find((m) => m.slug === slug)?.name;
+        const answer = await proposeFence(
+          slug,
+          name || slug,
+          proposal,
+          summariseFence(useFenceStore.getState()),
+        );
+        if (!answer.accepted) return answer;
+        // The HOST writes. The module never held this path.
+        const fence = useFenceStore.getState();
+        replaceInclusion(fence, fence, proposal.inclusion);
+        const ok = await useFenceStore.getState().uploadFence();
+        return ok
+          ? { accepted: true, pointsAccepted: proposal.inclusion.length }
+          : {
+              accepted: true,
+              error: useFenceStore.getState().error ?? 'The vehicle did not confirm the fence',
+            };
+      },
+    },
+
+    terrain: {
+      elevationAt: (lat, lng) => getElevation(lat, lng),
+      elevationsAt: (points) => getElevations(points.map((p) => ({ lat: p.lat, lon: p.lng }))),
+    },
+
+    alerts: {
+      raise: (alert) => raiseModuleAlert(slug, alert),
+      clear: (id) => clearModuleAlert(slug, id),
+    },
+
     map: {
       registerLayer: (reg) => registerModuleMapLayer(slug, reg),
       unregisterLayer: (id) => unregisterModuleMapLayer(slug, id),
+      pickPolygon: (prompt) => startPolygonPick(prompt ?? 'Click the corners of the area'),
     },
 
     survey: {

@@ -26,6 +26,7 @@ import { ModuleManagerView } from './components/modules/ModuleManagerView';
 import { ModuleRuntime } from './modules/ModuleRuntime';
 import { MountPoint } from './modules/MountPoint';
 import { ModuleDock } from './modules/ModuleDock';
+import { ModuleProposalDialog } from './modules/ModuleProposalDialog';
 import { CompanionDashboard } from './components/companion/CompanionDashboard';
 import { LogsView } from './components/logs/LogsView';
 import { MavlinkInspectorView } from './components/inspector/MavlinkInspectorView';
@@ -1312,6 +1313,7 @@ function App() {
     </AppTourProvider>
     <MountPoint name="floatingOverlay" />
     <ModuleDock />
+    <ModuleProposalDialog />
     </ModuleRuntime>
   );
 }

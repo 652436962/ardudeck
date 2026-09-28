@@ -77,6 +77,73 @@ export interface SurveyGeneratorRegistration {
 }
 
 
+// --- Mission workspace panels ---------------------------------------------
+// The mission planner is a dock of real panels (map, waypoints, altitude
+// profile, survey). A module that belongs BESIDE the map - anything the pilot
+// edits while watching the map react - registers one of these rather than a
+// floating window, and gets a proper tab the pilot can dock, resize and
+// close like any other.
+
+export interface MissionPanelRegistration {
+  /** Stable id within this module. */
+  id: string;
+  /** Tab title. Keep it short: it sits in a tab strip. */
+  title: string;
+  component: unknown;
+  /** Open the tab as soon as the module loads. Default false. */
+  openOnLoad?: boolean;
+}
+
+// --- Vehicle proposals ----------------------------------------------------
+// A module NEVER writes to the aircraft. It proposes, the host shows the
+// pilot what would be written and by whom, the host performs the write, and
+// the host reports back what the vehicle accepted.
+//
+// A module holding the write path could skip the dialog, by accident or
+// otherwise, and a dialog that can be skipped is decoration. That is why
+// there is no `write` here and no manifest permission to grant: the pilot is
+// the permission.
+
+export interface FenceProposal {
+  /** Shown to the pilot, so they know which boundary this is. */
+  name: string;
+  /** Inclusion polygon the aircraft must stay within. */
+  inclusion: MapPoint[];
+  /** Why the module is asking, in the pilot's words. */
+  reason: string;
+}
+
+export interface ProposalResult {
+  /** False when the pilot declined, or when nothing could be written. */
+  accepted: boolean;
+  /** What the vehicle confirmed it stored. Absent when nothing was sent. */
+  pointsAccepted?: number;
+  /** Set when the write was attempted and failed. */
+  error?: string;
+}
+
+// --- Terrain --------------------------------------------------------------
+
+// --- Alerts extension point -----------------------------------------------
+// A module says something the pilot must see. It goes into the host's own
+// message stream, at the host's severities, so a module alert looks and
+// sorts like every other alert rather than inventing its own surface.
+//
+// Advisory only. Nothing here changes what the aircraft does.
+
+export type ModuleAlertSeverity = 'info' | 'notice' | 'caution' | 'warning' | 'critical';
+
+export interface ModuleAlert {
+  /**
+   * Stable id for this alert WITHIN the module. Raising the same id again
+   * updates it in place rather than stacking a second copy, which is what
+   * lets a live readout ("18 s to the boundary") update without flooding.
+   */
+  id: string;
+  severity: ModuleAlertSeverity;
+  message: string;
+}
+
 // --- Map layer extension point --------------------------------------------
 // A module contributes DECLARATIVE features and the host draws them. The host
 // owns the map library, the layer control and the z-order, for the same reason
@@ -471,10 +538,49 @@ export interface RendererHostApi {
    * owns the layer control, and never lets a module layer cover the vehicle
    * or the mission.
    */
+  /**
+   * Tell the pilot something. Goes into the host's message stream; raising an
+   * id again replaces that alert rather than stacking another.
+   */
+  /**
+   * Ask the pilot to put something on the aircraft. The host renders the
+   * dialog and performs the write; a module cannot bypass either.
+   */
+  /**
+   * Contribute a panel to the mission planning workspace, tabbed alongside
+   * Waypoints and Survey. The right home for anything edited while watching
+   * the map, which a floating window cannot be.
+   */
+  missionWorkspace: {
+    registerPanel(reg: MissionPanelRegistration): void;
+    unregisterPanel(id: string): void;
+    /** Bring this module's panel to the front, opening it if it is closed. */
+    openPanel(id: string): void;
+  };
+  vehicle: {
+    proposeFence(proposal: FenceProposal): Promise<ProposalResult>;
+  };
+  /** Ground elevation, metres AMSL. Null where the host has no data. */
+  terrain: {
+    elevationAt(lat: number, lng: number): Promise<number | null>;
+    /** Batched: one request for the set, not one per point. */
+    elevationsAt(points: { lat: number; lng: number }[]): Promise<(number | null)[]>;
+  };
+  alerts: {
+    raise(alert: ModuleAlert): void;
+    /** Withdraw an alert this module raised. */
+    clear(id: string): void;
+  };
   map: {
     registerLayer(reg: MapLayerRegistration): void;
     /** Remove a layer this module registered. Other modules' ids are ignored. */
     unregisterLayer(id: string): void;
+    /**
+     * Ask the pilot to draw an area. The host owns the interaction: clicks
+     * place corners, a double click closes the ring, Escape cancels.
+     * Resolves with the ring, or null if they backed out.
+     */
+    pickPolygon(prompt?: string): Promise<MapPoint[] | null>;
   };
   survey: {
     /**

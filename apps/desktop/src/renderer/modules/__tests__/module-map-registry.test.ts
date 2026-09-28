@@ -9,6 +9,12 @@ import {
   featuresOf,
   isLayerVisible,
   setLayerVisible,
+  startPolygonPick,
+  getPolygonPick,
+  addPickPoint,
+  undoPickPoint,
+  finishPick,
+  cancelPick,
 } from '../module-map-registry';
 
 const SLUG = 'com.example.test';
@@ -42,7 +48,7 @@ describe('module map registry', () => {
     unregisterModuleMapLayer(SLUG, 'volumes');
     const left = getModuleMapLayers();
     expect(left).toHaveLength(1);
-    expect(left[0].slug).toBe(OTHER);
+    expect(left[0]!.slug).toBe(OTHER);
   });
 
   it('refuses to remove another module’s layer', () => {
@@ -93,7 +99,7 @@ describe('module map registry', () => {
         },
       }),
     );
-    expect(featuresOf(getModuleMapLayers()[0])).toEqual([]);
+    expect(featuresOf(getModuleMapLayers()[0]!)).toEqual([]);
   });
 
   it('survives a module whose subscribe() throws, keeping its static drawing', () => {
@@ -106,12 +112,12 @@ describe('module map registry', () => {
       }),
     );
     expect(getModuleMapLayers()).toHaveLength(1);
-    expect(featuresOf(getModuleMapLayers()[0])).toHaveLength(1);
+    expect(featuresOf(getModuleMapLayers()[0]!)).toHaveLength(1);
   });
 
   it('honours defaultVisible false, and the pilot’s choice afterwards', () => {
     registerModuleMapLayer(SLUG, layer('quiet', { defaultVisible: false }));
-    const key = getModuleMapLayers()[0].key;
+    const key = getModuleMapLayers()[0]!.key;
     expect(isLayerVisible(key)).toBe(false);
 
     setLayerVisible(key, true);
@@ -120,12 +126,12 @@ describe('module map registry', () => {
 
   it('forgets visibility when the layer goes, so a reinstall starts clean', () => {
     registerModuleMapLayer(SLUG, layer('volumes'));
-    const key = getModuleMapLayers()[0].key;
+    const key = getModuleMapLayers()[0]!.key;
     setLayerVisible(key, false);
     unregisterModuleMapLayer(SLUG, 'volumes');
 
     registerModuleMapLayer(SLUG, layer('volumes'));
-    expect(isLayerVisible(getModuleMapLayers()[0].key)).toBe(true);
+    expect(isLayerVisible(getModuleMapLayers()[0]!.key)).toBe(true);
   });
 
   it('sweeps everything a module registered on unload', () => {
@@ -145,5 +151,65 @@ describe('module map registry', () => {
     expect(() =>
       registerModuleMapLayer(SLUG, { id: 'x', name: 'x' } as MapLayerRegistration),
     ).toThrow();
+  });
+});
+
+describe('polygon picking', () => {
+  it('replaces the pick object on every change', () => {
+    // React compares state by reference. Mutating the pick in place meant the
+    // component compared a value against itself and skipped the render, so
+    // corners went in and nothing on screen moved.
+    void startPolygonPick('draw');
+    const a = getPolygonPick();
+    addPickPoint({ lat: 1, lng: 1 });
+    const b = getPolygonPick();
+    expect(b).not.toBe(a);
+    expect(b!.points).toHaveLength(1);
+    cancelPick();
+  });
+
+  it('tells its subscribers a corner went in', () => {
+    const seen = vi.fn();
+    void startPolygonPick('draw');
+    const off = subscribeModuleMapLayers(seen);
+    addPickPoint({ lat: 1, lng: 1 });
+    expect(seen).toHaveBeenCalled();
+    off();
+    cancelPick();
+  });
+
+  it('undo takes the last corner back', () => {
+    void startPolygonPick('draw');
+    addPickPoint({ lat: 1, lng: 1 });
+    addPickPoint({ lat: 2, lng: 2 });
+    undoPickPoint();
+    expect(getPolygonPick()!.points).toHaveLength(1);
+    cancelPick();
+  });
+
+  it('two corners is not an area, so finishing cancels', async () => {
+    const p = startPolygonPick('draw');
+    addPickPoint({ lat: 1, lng: 1 });
+    addPickPoint({ lat: 2, lng: 2 });
+    finishPick();
+    await expect(p).resolves.toBeNull();
+  });
+
+  it('three corners resolves with the ring', async () => {
+    const p = startPolygonPick('draw');
+    addPickPoint({ lat: 1, lng: 1 });
+    addPickPoint({ lat: 2, lng: 2 });
+    addPickPoint({ lat: 3, lng: 1 });
+    finishPick();
+    await expect(p).resolves.toHaveLength(3);
+  });
+
+  it('a second request does not hijack the one in progress', async () => {
+    const first = startPolygonPick('first');
+    const second = await startPolygonPick('second');
+    expect(second).toBeNull();
+    expect(getPolygonPick()!.prompt).toBe('first');
+    cancelPick();
+    await expect(first).resolves.toBeNull();
   });
 });

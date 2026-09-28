@@ -117,3 +117,60 @@ export function featuresOf(layer: ModuleMapLayer): MapFeature[] {
     return [];
   }
 }
+
+// --- polygon picking -------------------------------------------------------
+
+export interface PolygonPick {
+  prompt: string;
+  points: { lat: number; lng: number }[];
+  resolve: (ring: { lat: number; lng: number }[] | null) => void;
+}
+
+let pick: PolygonPick | null = null;
+
+export function getPolygonPick(): PolygonPick | null {
+  return pick;
+}
+
+/** Start a pick. One at a time: a second request cancels nothing and fails. */
+export function startPolygonPick(prompt: string): Promise<{ lat: number; lng: number }[] | null> {
+  if (pick) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const done = (ring: { lat: number; lng: number }[] | null): void => {
+      pick = null;
+      emit();
+      resolve(ring);
+    };
+    pick = { prompt, points: [], resolve: done };
+    emit();
+  });
+}
+
+// Every change REPLACES the pick object. Mutating it in place left React
+// comparing a state value against itself and skipping the render, so corners
+// went in and nothing on screen moved.
+function update(points: { lat: number; lng: number }[]): void {
+  if (!pick) return;
+  pick = { ...pick, points };
+  emit();
+}
+
+export function addPickPoint(p: { lat: number; lng: number }): void {
+  if (!pick) return;
+  update([...pick.points, p]);
+}
+
+export function undoPickPoint(): void {
+  if (!pick) return;
+  update(pick.points.slice(0, -1));
+}
+
+/** Close the ring. Fewer than three corners is not an area, so it cancels. */
+export function finishPick(): void {
+  if (!pick) return;
+  pick.resolve(pick.points.length >= 3 ? pick.points : null);
+}
+
+export function cancelPick(): void {
+  pick?.resolve(null);
+}

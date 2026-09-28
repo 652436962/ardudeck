@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents, Circle } from 'react-leaflet';
-import { ModuleMapLayers } from './ModuleMapLayers';
+import { ModuleMapLayers, ModulePolygonPick, ModulePolygonPickBar } from './ModuleMapLayers';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useTelemetryStore } from '../../stores/telemetry-store';
@@ -1720,6 +1720,8 @@ const TelemetryMap3D = React.memo(function TelemetryMap3D() {
         </div>
       )}
 
+      <ModulePolygonPickBar />
+
       {/* Stats overlay */}
       <div className="absolute bottom-2 left-2 z-[1000] bg-surface-overlay backdrop-blur-sm rounded px-3 py-2 text-xs text-content space-y-1 min-w-[130px] border border-subtle shadow-lg">
         <div className="flex justify-between">
@@ -2805,6 +2807,7 @@ const TelemetryMap2D = React.memo(function TelemetryMap2D() {
 
         {/* Module layers first, so nothing a module draws covers the aircraft. */}
         <ModuleMapLayers />
+        <ModulePolygonPick />
 
         {/* Flight trail */}
         {trail.length > 1 && (

@@ -19,6 +19,7 @@ import { MAP_LAYERS, type LayerKey } from '../../../../shared/map-layers';
 import { LayerIcon } from '../LayerIcon';
 import { useOverlayStore } from '../../../stores/overlay-store';
 import { OVERLAYS } from './OverlayToggles';
+import { useModuleMapLayerToggles } from '../../panels/ModuleMapLayers';
 
 interface MapLayersControlProps {
   baseLayers: LayerKey[];
@@ -122,6 +123,8 @@ export function MapLayersControl({
                   )}
                 </div>
 
+                <ModuleLayerToggles row={row} />
+
                 {extra && <div className="p-1 border-t border-subtle">{extra}</div>}
               </div>
             </div>
@@ -129,5 +132,31 @@ export function MapLayersControl({
           document.body,
         )}
     </div>
+  );
+}
+
+/**
+ * Layers contributed by installed cargos. Hidden entirely when none are
+ * registered, so the control does not grow an empty section for most pilots.
+ */
+function ModuleLayerToggles({ row }: { row: (on: boolean) => string }): JSX.Element | null {
+  const { layers, isVisible, toggle } = useModuleMapLayerToggles();
+  if (layers.length === 0) return null;
+  return (
+    <>
+      <div className="px-3 py-2 text-[11px] uppercase tracking-wide text-content-tertiary border-y border-subtle">
+        Modules
+      </div>
+      <div className="p-1 space-y-0.5">
+        {layers.map((l) => (
+          <button key={l.key} type="button" onClick={() => toggle(l.key)} className={row(isVisible(l.key))}>
+            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+            {l.reg.name}
+          </button>
+        ))}
+      </div>
+    </>
   );
 }

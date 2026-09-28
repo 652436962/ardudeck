@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useState } from 'react';
+import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DockviewReact,
   DockviewReadyEvent,
@@ -20,6 +20,11 @@ import { FlightPreviewPanel } from './FlightPreviewPanel';
 import { useFlightPreviewStore } from '../../stores/flight-preview-store';
 import { FlightInfoPanel } from './FlightInfoPanel';
 import { SurveyConfigPanel } from '../survey/SurveyConfigPanel';
+import {
+  getModuleMissionPanels,
+  subscribeModuleMissionPanels,
+  takeWantedPanels,
+} from '../../modules/module-mission-panel-registry';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { useMissionStore } from '../../stores/mission-store';
 import { useConnectionStore } from '../../stores/connection-store';
@@ -51,6 +56,22 @@ const components: Record<string, React.FC<IDockviewPanelProps>> = {
   SurveyConfigPanel: () => <ErrorBoundary label="survey panel"><SurveyConfigPanel /></ErrorBoundary>,
   FlightPreviewPanel: () => <ErrorBoundary label="flight preview"><FlightPreviewPanel /></ErrorBoundary>,
 };
+
+/** Built-ins plus whatever cargos have registered, for the dockview registry. */
+function componentsWithModules(): Record<string, React.FC<IDockviewPanelProps>> {
+  const out = { ...components };
+  for (const p of getModuleMissionPanels()) {
+    const Body = p.component;
+    out[p.key] = () => (
+      <ErrorBoundary label={p.title}>
+        <div style={{ height: '100%', overflow: 'auto' }}>
+          <Body />
+        </div>
+      </ErrorBoundary>
+    );
+  }
+  return out;
+}
 
 // Flight Preview tab: opened/closed with the preview store, docked as a
 // sibling tab of the Altitude Profile.
@@ -413,6 +434,38 @@ export function MissionPlanningView() {
     }
   }, [surveyIsActive, layoutLoaded]);
 
+  // Cargo panels: the registry can change at any time (a module installed or
+  // removed), so the dockview component map is rebuilt with it.
+  const [moduleRev, setModuleRev] = useState(0);
+  useEffect(() => subscribeModuleMissionPanels(() => setModuleRev((n) => n + 1)), []);
+  const dockComponents = useMemo(
+    () => componentsWithModules(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [moduleRev],
+  );
+
+  useEffect(() => {
+    if (!apiRef.current || !layoutLoaded) return;
+    const api = apiRef.current;
+    for (const key of takeWantedPanels()) {
+      const panel = getModuleMissionPanels().find((p) => p.key === key);
+      if (!panel) continue;
+      const existing = api.getPanel(key);
+      if (existing) {
+        existing.api.setActive();
+        continue;
+      }
+      const refGroup = api.getPanel('waypointTable')?.group;
+      api.addPanel({
+        id: key,
+        component: key,
+        title: panel.title,
+        ...(refGroup ? { position: { referenceGroup: refGroup } } : {}),
+      });
+      api.getPanel(key)?.api.setActive();
+    }
+  }, [moduleRev, layoutLoaded]);
+
   // Closing the Survey tab manually should also exit survey mode — otherwise
   // the add/remove effect above would just re-create it on the next render.
   useEffect(() => {
@@ -560,7 +613,7 @@ export function MissionPlanningView() {
       {/* Dockview container */}
       <div className="flex-1">
         <DockviewReact
-          components={components}
+          components={dockComponents}
           onReady={onReady}
           theme={resolvedTheme === 'light' ? themeLight : themeDark}
           className="h-full"

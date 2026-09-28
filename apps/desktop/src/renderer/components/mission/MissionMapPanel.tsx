@@ -235,6 +235,11 @@ function buildSegmentedPath(allItems: MissionItem[], groupColorOf?: (groupId: st
 import { MAP_LAYERS, type LayerKey, type MapLayer } from '../../../shared/map-layers';
 import { MapSearchControl } from '../map/MapSearchControl';
 import { EnginePlanLegend } from '../survey/EnginePlanLegend';
+import {
+  ModuleMapLayers,
+  ModulePolygonPick,
+  ModulePolygonPickBar,
+} from '../panels/ModuleMapLayers';
 
 // Default center fallback (London) - will be overridden by IP geolocation
 const FALLBACK_CENTER: [number, number] = [51.505, -0.09];
@@ -1213,6 +1218,10 @@ function MissionMapPanel2D({ readOnly = false }: MissionMapPanelProps) {
       >
         <SmoothWheelZoom />
         <ViewportSync />
+        {/* Cargo layers under the mission's own drawing, and the polygon
+            picker a cargo can ask the pilot for. */}
+        <ModuleMapLayers />
+        <ModulePolygonPick />
         <MapResizeHandler />
         <MapBoundsTracker onBoundsChange={handleBoundsChange} />
         <MaxZoomUpdater maxZoom={layer.maxZoom} />
@@ -1444,6 +1453,7 @@ function MissionMapPanel2D({ readOnly = false }: MissionMapPanelProps) {
         )}
       </MapContainer>
 
+      <ModulePolygonPickBar />
       <TrafficAltitudeFilter />
       <ZoneAlertBanner />
 

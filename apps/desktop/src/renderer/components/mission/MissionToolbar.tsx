@@ -5,6 +5,11 @@ import { FileCode, Globe, Library, ListOrdered } from 'lucide-react';
 import { useConnectionStore } from '../../stores/connection-store';
 import { useMissionStore } from '../../stores/mission-store';
 import { useSurveyStore } from '../../stores/survey-store';
+import {
+  getModuleMissionPanels,
+  openModuleMissionPanel,
+  subscribeModuleMissionPanels,
+} from '../../modules/module-mission-panel-registry';
 import { useFenceStore } from '../../stores/fence-store';
 import { useRallyStore } from '../../stores/rally-store';
 import { useEditModeStore, type EditMode, type MapMode } from '../../stores/edit-mode-store';
@@ -800,6 +805,8 @@ export function MissionToolbar({ onResetLayout, showToast }: MissionToolbarProps
         )}
       </div>
 
+      <ModulePanelButtons />
+
       {/* Spacer */}
       <div className="flex-1" />
 
@@ -958,6 +965,36 @@ export function MissionToolbar({ onResetLayout, showToast }: MissionToolbarProps
         onClose={() => setShowUploadPreview(false)}
         onConfirm={handleConfirmUploadFromPreview}
       />
+    </div>
+  );
+}
+
+
+/**
+ * Panels installed cargos contribute to this workspace. Absent entirely when
+ * no cargo registers one, so the toolbar does not grow a dead control for
+ * most pilots.
+ */
+function ModulePanelButtons(): JSX.Element | null {
+  const [panels, setPanels] = useState(getModuleMissionPanels);
+  useEffect(() => subscribeModuleMissionPanels(() => setPanels(getModuleMissionPanels())), []);
+  if (panels.length === 0) return null;
+  return (
+    <div className="flex items-center gap-1 shrink-0">
+      {panels.map((p) => (
+        <button
+          key={p.key}
+          type="button"
+          onClick={() => openModuleMissionPanel(p.slug, p.id)}
+          className="px-2 py-1 rounded text-xs border border-subtle text-content-secondary hover:text-content hover:bg-surface-hover transition-colors flex items-center gap-1.5"
+          data-tip={`Open the ${p.title} panel`}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
+          {p.title}
+        </button>
+      ))}
     </div>
   );
 }
