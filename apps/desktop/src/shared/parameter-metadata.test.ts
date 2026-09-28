@@ -160,3 +160,60 @@ describe('parseParameterXml value regex - negative code support', () => {
     expect(match).toBeNull(); // Old regex cannot match negative codes
   });
 });
+
+describe('range overrides', () => {
+  const qAssist: ParameterMetadata = {
+    name: 'Q_ASSIST_SPEED',
+    humanName: 'Quadplane assistance speed',
+    description: 'Set to -1 to disable assistance',
+    range: { min: 0, max: 100 },
+    units: 'm/s',
+  };
+
+  it('accepts the documented -1 disable value', () => {
+    expect(validateParameterValue(-1, qAssist).valid).toBe(true);
+  });
+
+  it('still keeps the declared bounds either side', () => {
+    expect(validateParameterValue(0, qAssist).valid).toBe(true);
+    expect(validateParameterValue(100, qAssist).valid).toBe(true);
+    expect(validateParameterValue(-2, qAssist).valid).toBe(false);
+    expect(validateParameterValue(101, qAssist).valid).toBe(false);
+  });
+
+  it('reports the widened bound in the error, not the declared one', () => {
+    expect(validateParameterValue(-2, qAssist).error).toContain('-1');
+  });
+
+  it('leaves a parameter with no override alone', () => {
+    const plain: ParameterMetadata = {
+      name: 'SOME_OTHER_PARAM',
+      humanName: 'Other',
+      description: '',
+      range: { min: 0, max: 10 },
+    };
+    expect(validateParameterValue(-1, plain).valid).toBe(false);
+  });
+
+  it('applies to every parameter whose docs give -1 as the disable value', () => {
+    for (const name of ['RC_OVERRIDE_TIME', 'SOAR_MAX_DRIFT', 'SOAR_MAX_RADIUS', 'TA_GSP_MAX']) {
+      const meta: ParameterMetadata = {
+        name,
+        humanName: name,
+        description: '',
+        range: { min: 0, max: 120 },
+      };
+      expect(validateParameterValue(-1, meta).valid, name).toBe(true);
+    }
+  });
+
+  it('does not widen a parameter whose -1 refers to a different parameter', () => {
+    const rk9: ParameterMetadata = {
+      name: 'RK9_BOOTED',
+      humanName: 'Rockblock booted',
+      description: 'Requires SERVON_FUNCTION=-1',
+      range: { min: 50, max: 110 },
+    };
+    expect(validateParameterValue(-1, rk9).valid).toBe(false);
+  });
+});

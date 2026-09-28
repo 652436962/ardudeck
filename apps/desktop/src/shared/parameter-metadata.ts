@@ -42,7 +42,28 @@ export const REBOOT_REQUIRED_OVERRIDES: ReadonlySet<string> = new Set([
 export const PARAM_RANGE_OVERRIDES: Readonly<Record<string, { min?: number; max?: number }>> = {
   // input_expo(): `if (expo < 0.95)` returns the input unchanged at 0.95.
   MANUAL_STR_EXPO: { max: 0.9 },
+  // -1 is documented as the disable value but is outside the declared @Range.
+  Q_ASSIST_SPEED: { min: -1 },
+  RC_OVERRIDE_TIME: { min: -1 },
+  SOAR_MAX_DRIFT: { min: -1 },
+  SOAR_MAX_RADIUS: { min: -1 },
+  TA_GSP_MAX: { min: -1 },
 };
+
+export function effectiveRange(
+  metadata: ParameterMetadata,
+): { min: number; max: number } | undefined {
+  const override = metadata.name ? PARAM_RANGE_OVERRIDES[metadata.name] : undefined;
+  if (!metadata.range) {
+    return override?.min !== undefined && override?.max !== undefined
+      ? { min: override.min, max: override.max }
+      : undefined;
+  }
+  return {
+    min: override?.min ?? metadata.range.min,
+    max: override?.max ?? metadata.range.max,
+  };
+}
 
 export type VehicleType = 'copter' | 'plane' | 'rover' | 'sub' | 'tracker';
 
@@ -131,8 +152,9 @@ export function validateParameterValue(
   }
 
   // Check range bounds
-  if (metadata.range) {
-    const { min, max } = metadata.range;
+  const range = effectiveRange(metadata);
+  if (range) {
+    const { min, max } = range;
     if (value < min || value > max) {
       return {
         valid: false,
