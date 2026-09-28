@@ -6,6 +6,7 @@ import { useMemo, useCallback, useState, useEffect, memo, Fragment } from 'react
 import { Polygon, Polyline, CircleMarker, Marker, Tooltip, Pane, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { extractGeneratorOverlays } from './generator-overlays';
+import { corridorBand } from './generators/corridor-generator';
 import { bezierSpline, defaultSplineTangent, nearestEdgeIndex, type SplineTangent } from './geo-edit';
 import { latLngToLocal, localToLatLng } from './geo-math';
 import { cullPathForViewport } from './path-culling';
@@ -243,6 +244,8 @@ export function SurveyMapOverlay() {
   const polygon = useSurveyStore((s) => s.polygon);
   const pattern = useSurveyStore((s) => s.config.pattern);
   const corridorBranches = useSurveyStore((s) => s.config.corridorBranches);
+  const corridorWidth = useSurveyStore((s) => s.config.corridorWidth ?? 60);
+  const corridorMargin = useSurveyStore((s) => s.config.corridorMargin ?? 0);
   const result = useSurveyStore((s) => s.result);
   const showFootprints = useSurveyStore((s) => s.showFootprints);
   const showLegOrder = useSettingsStore((s) => s.missionDefaults.showLineOrder);
@@ -511,6 +514,25 @@ export function SurveyMapOverlay() {
               vertices for editing. */}
           {pattern === 'corridor' || pattern === 'panorama' ? (
             <>
+              {/* The width asked for, so changing it always shows, and the
+                  margin the strips cover beyond it. */}
+              {pattern === 'corridor' &&
+                [polygon, ...(corridorBranches ?? [])].filter((c) => c.length >= 2).map((c, ci) => (
+                  <Fragment key={`band-${ci}`}>
+                    <Polygon
+                      positions={corridorBand(c, corridorWidth).map(toLf)}
+                      interactive={false}
+                      pathOptions={{ color: SURVEY_POLYGON_COLOR, weight: 1, opacity: 0.5, fillOpacity: 0.06 }}
+                    />
+                    {corridorMargin > 0 && (
+                      <Polygon
+                        positions={corridorBand(c, corridorWidth + 2 * corridorMargin).map(toLf)}
+                        interactive={false}
+                        pathOptions={{ color: SURVEY_POLYGON_COLOR, weight: 1, opacity: 0.5, fill: false, dashArray: '3, 4' }}
+                      />
+                    )}
+                  </Fragment>
+                ))}
               <Polyline
                 positions={subjectCurvePositions ?? polygonPositions}
                 interactive={false}

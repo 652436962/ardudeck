@@ -206,6 +206,7 @@ export function SurveyConfigPanel() {
   const setPanoramaSide = useSurveyStore((s) => s.setPanoramaSide);
   const setPanoramaStandoff = useSurveyStore((s) => s.setPanoramaStandoff);
   const setCorridorSideOffset = useSurveyStore((s) => s.setCorridorSideOffset);
+  const setCorridorMargin = useSurveyStore((s) => s.setCorridorMargin);
   const startBranchDraw = useSurveyStore((s) => s.startBranchDraw);
   const completeBranch = useSurveyStore((s) => s.completeBranch);
   const clearCorridorBranches = useSurveyStore((s) => s.clearCorridorBranches);
@@ -1220,6 +1221,16 @@ export function SurveyConfigPanel() {
                 onChange={setCorridorWidth}
                 min={5}
                 max={500}
+                step={5}
+                unit="m"
+              />
+
+              <SliderInput
+                label="Margin"
+                value={config.corridorMargin ?? 0}
+                onChange={setCorridorMargin}
+                min={0}
+                max={200}
                 step={5}
                 unit="m"
               />

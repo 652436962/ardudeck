@@ -185,6 +185,8 @@ export interface SurveyConfig {
   finish?: SurveyFinish;
   /** Lateral shift of the whole strip bundle off the centerline, in meters (e.g. to bias coverage to one side of a road). */
   corridorSideOffset?: number;
+  /** Extra coverage past each corridor edge, in meters: edges are seen by fewer photos and reconstruct worse. */
+  corridorMargin?: number;
   /**
    * Corridor only. Additional centerlines that branch off the main one (roads
    * that fork, power-line spurs, river tributaries). The main centerline is
@@ -334,6 +336,7 @@ export const DEFAULT_SURVEY_CONFIG: Omit<SurveyConfig, 'polygon'> = {
   start: 'takeoff',
   finish: 'rtl',
   corridorSideOffset: 0,
+  corridorMargin: 0,
   maxTurnAngle: 15,
   planBankDeg: 30,
   stripOrder: 'auto',

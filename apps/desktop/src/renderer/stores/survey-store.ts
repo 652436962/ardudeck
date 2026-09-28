@@ -158,6 +158,7 @@ interface SurveyStore {
   setCorridorStrips: (count: number) => void;
   setCorridorMode: (mode: CorridorMode) => void;
   setCorridorSideOffset: (meters: number) => void;
+  setCorridorMargin: (meters: number) => void;
   setMaxTurnAngle: (degrees: number) => void;
   /** Whether the mission opens with a takeoff item. */
   setStart: (start: SurveyStart) => void;
@@ -741,6 +742,11 @@ export const useSurveyStore = create<SurveyStore>()(subscribeWithSelector((set, 
 
   setCorridorSideOffset: (meters) => {
     set({ config: { ...get().config, corridorSideOffset: Math.round(meters) } });
+    get().requestRecompute();
+  },
+
+  setCorridorMargin: (meters) => {
+    set({ config: { ...get().config, corridorMargin: Math.max(0, Math.min(200, Math.round(meters))) } });
     get().requestRecompute();
   },
 

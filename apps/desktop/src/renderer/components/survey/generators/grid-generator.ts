@@ -146,6 +146,9 @@ export function generateGrid(config: SurveyConfig): SurveyResult {
     for (let i = 0; i + 1 < clippedLines.length; i++) {
       const a = clippedLines[i]!;
       const b = clippedLines[i + 1]!;
+      // Only a turn onto the next row; aligning an arm hop stretches b across the notch.
+      const dy = Math.abs(b.y - a.y);
+      if ((a.x2 >= a.x1) === (b.x2 >= b.x1) || dy < 1e-6 || dy > lineSpacing * 1.5) continue;
       const outer = a.x2 >= a.x1
         ? Math.max(a.x2, b.x1) // turn on the right — extend to the rightmost
         : Math.min(a.x2, b.x1); // turn on the left — extend to the leftmost

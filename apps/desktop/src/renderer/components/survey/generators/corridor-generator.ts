@@ -78,6 +78,20 @@ function vertexNormals(path: XY[]): XY[] {
   return normals;
 }
 
+/**
+ * The corridor as a closed band `width` wide around the centerline (shifted by
+ * `sideOffset`), for drawing what is asked to be covered.
+ */
+export function corridorBand(centerline: LatLng[], width: number, sideOffset = 0): LatLng[] {
+  if (centerline.length < 2 || width <= 0) return [];
+  const origin = polygonCentroid(centerline);
+  const local = centerline.map((v) => latLngToLocal(origin, v));
+  const normals = vertexNormals(local);
+  const left = offsetPath(local, normals, sideOffset + width / 2);
+  const right = offsetPath(local, normals, sideOffset - width / 2).reverse();
+  return [...left, ...right].map((p) => localToLatLng(origin, p.x, p.y));
+}
+
 function offsetPath(path: XY[], normals: XY[], distance: number): XY[] {
   return path.map((p, i) => ({
     x: p.x + normals[i]!.x * distance,
@@ -169,21 +183,29 @@ function applyTurnLoops(path: XY[], maxTurnDeg: number, radius: number): XY[] {
   return out;
 }
 
-/** Line spacing the strips are laid out on, ahead of generating any of them. */
-function effectiveLineSpacing(config: SurveyConfig): number {
-  const { width, height } = getEffectiveFootprint(config.camera, config.altitude);
-  return getEffectiveSpacing(config.camera, width, height, config.frontOverlap, config.sideOverlap).lineSpacing;
-}
-
 /**
- * How many parallel strips a run is flown as. Shared with the pass scheduler,
- * which needs it before any strip has been generated.
+ * How many parallel strips a run is flown as, and how far apart. Shared with
+ * the pass scheduler, which needs it before any strip has been generated.
+ *
+ * Coverage is measured at the photo edges: N strips `gap` apart cover
+ * (N - 1) * gap + one footprint. From the width, fly the fewest strips that
+ * reach both edges and spread them evenly, so the gap never exceeds the
+ * side-overlap spacing and the overlap only rises. An explicit strip count
+ * keeps the overlap spacing as before.
  */
-function corridorStripCount(config: SurveyConfig, lineSpacing?: number): number {
+function corridorLayout(config: SurveyConfig): { count: number; gap: number } {
+  const { width: footprintW, height } = getEffectiveFootprint(config.camera, config.altitude);
+  const lineSpacing = getEffectiveSpacing(
+    config.camera, footprintW, height, config.frontOverlap, config.sideOverlap,
+  ).lineSpacing;
   const explicit = config.corridorStrips ?? 0;
-  if (explicit > 0) return Math.min(40, explicit);
-  if (lineSpacing === undefined || lineSpacing <= 0) return 1;
-  return Math.max(1, Math.min(40, Math.ceil((config.corridorWidth ?? 60) / lineSpacing)));
+  if (explicit > 0) return { count: Math.min(40, explicit), gap: lineSpacing };
+  const width = (config.corridorWidth ?? 60) + 2 * (config.corridorMargin ?? 0);
+  if (lineSpacing <= 0 || width <= footprintW) return { count: 1, gap: lineSpacing };
+  const span = width - footprintW;
+  const count = Math.ceil(span / lineSpacing - 1e-9) + 1;
+  if (count > 40) return { count: 40, gap: lineSpacing };
+  return { count, gap: span / (count - 1) };
 }
 
 /** Sample a polyline at fixed spacing, returning each point and its heading. */
@@ -278,15 +300,15 @@ function generateOneCorridor(
     return { waypoints: [], photoPositions: [], footprints: [], stats: emptyStats(config) };
   }
 
-  // Strip count: explicit override, otherwise derived from the swath width.
-  const nStrips = corridorStripCount(config, lineSpacing);
+  // Strip count and gap: explicit override, otherwise from the swath width.
+  const { count: nStrips, gap } = corridorLayout(config);
 
   // Lateral offsets, centered on the centerline (+ side-offset bias). An odd
   // count puts one strip on the centerline; an even count straddles it.
   const half = (nStrips - 1) / 2;
   const sideOffset = config.corridorSideOffset ?? 0;
   const offsets: number[] = [];
-  for (let i = 0; i < nStrips; i++) offsets.push((i - half) * lineSpacing + sideOffset);
+  for (let i = 0; i < nStrips; i++) offsets.push((i - half) * gap + sideOffset);
 
   // Strip order comes from what the aircraft can turn, not from 1,2,3. Lines
   // closer together than a turn diameter are flown with a stride between them
@@ -299,7 +321,7 @@ function generateOneCorridor(
   const loopRadius = Math.max(config.overshoot, 10);
   const stripPlan = stripFlightOrder(
     nStrips,
-    lineSpacing,
+    gap,
     (config.stripOrder ?? 'auto') === 'sequential' ? 0 : turnRadius,
   );
   const order = config.flipLegs ? [...stripPlan.order].reverse() : stripPlan.order;
@@ -318,6 +340,11 @@ function generateOneCorridor(
     let strip = offsetPath(centerLocal, normals, offsets[stripIdx] ?? offsets[0]!);
     // Boustrophedon: every other strip is flown in the opposite direction.
     if (reverse) strip = [...strip].reverse();
+    // Photos along the strip itself; the camera has nothing to map on a turn
+    // loop or an end overshoot.
+    if (!isManual) {
+      photoSamples.push(...samplePolyline(strip, photoSpacing > 0 ? photoSpacing : lineSpacing));
+    }
     if (planeTurns) {
       strip = applyTurnLoops(strip, config.maxTurnAngle ?? 15, loopRadius);
       // invertPath already reversed the source, so the strip's first point is
@@ -332,9 +359,6 @@ function generateOneCorridor(
     }
     legStarts.push(waypointsLocal.length);
     waypointsLocal.push(...strip);
-    if (!isManual) {
-      photoSamples.push(...samplePolyline(strip, photoSpacing > 0 ? photoSpacing : lineSpacing));
-    }
   });
 
   const placed: LatLng[] = waypointsLocal.map((p) => localToLatLng(origin, p.x, p.y));
@@ -363,7 +387,9 @@ function generateOneCorridor(
   // A part that generated a single strip must report a single strip, or the
   // merged stats count each pass as the whole run's worth of lines and area.
   const stripsGenerated = only ? 1 : nStrips;
-  const coveredWidth = stripsGenerated * lineSpacing;
+  // Photo edge to photo edge; one strip's share when this part is one pass.
+  const swath = (nStrips - 1) * gap + footprintW;
+  const coveredWidth = only ? swath / nStrips : swath;
   const gsd = isManual
     ? 0
     : (camera.sensorWidth * altitude * 100) / (camera.focalLength * camera.imageWidth);
@@ -377,7 +403,7 @@ function generateOneCorridor(
     areaCovered: centerLength * coveredWidth,
     footprintWidth: footprintW,
     footprintHeight: footprintH,
-    lineSpacing,
+    lineSpacing: gap,
     photoSpacing,
   };
 
@@ -411,7 +437,7 @@ export function generateCorridor(config: SurveyConfig): SurveyResult {
 
   // Order and orient the runs before generating, so the aircraft works its way
   // along the line instead of crossing back for every spur it was drawn after.
-  const stripCount = corridorStripCount(config, effectiveLineSpacing(config));
+  const stripCount = corridorLayout(config).count;
   const plan = orderCorridorRuns(centerlines);
   const oriented = plan.map(({ index, reversed }) => {
     const line = centerlines[index]!;

@@ -68,6 +68,35 @@ describe('grid plane-mode turns', () => {
     expect(plane.waypoints.length).toBe(copter.waypoints.length); // same WP count, just shifted
   });
 
+  it('does not stretch a line across the notch when the route hops between arms', () => {
+    // Axis-aligned U: real turns already have matching ends, so plane mode
+    // must leave every line as copter mode drew it.
+    const U: LatLng[] = [
+      { lat: 47.0000, lng: 8.0000 },
+      { lat: 47.0000, lng: 8.0060 },
+      { lat: 47.0040, lng: 8.0060 },
+      { lat: 47.0040, lng: 8.0040 },
+      { lat: 47.0010, lng: 8.0040 },
+      { lat: 47.0010, lng: 8.0020 },
+      { lat: 47.0040, lng: 8.0020 },
+      { lat: 47.0040, lng: 8.0000 },
+    ];
+    for (const gridAngle of [0, 90]) {
+      const copter = generateGrid(cfg(U, { gridMode: 'copter', gridAngle, overshoot: 0 }));
+      const plane = generateGrid(cfg(U, { gridMode: 'plane', gridAngle, overshoot: 0 }));
+      const o = polygonCentroid(U);
+      const len = (r: typeof copter, i: number) => {
+        const a = latLngToLocal(o, r.waypoints[r.legStarts![i]!]!);
+        const b = latLngToLocal(o, r.waypoints[r.legStarts![i]! + 1]!);
+        return Math.hypot(b.x - a.x, b.y - a.y);
+      };
+      expect(plane.legStarts!.length).toBe(copter.legStarts!.length);
+      for (let i = 0; i < copter.legStarts!.length; i++) {
+        expect(len(plane, i)).toBeCloseTo(len(copter, i), 0);
+      }
+    }
+  });
+
   it('on an axis-aligned rectangle the ends already match (no extra distance)', () => {
     const copter = generateGrid(cfg(SQUARE, { gridMode: 'copter' }));
     const plane = generateGrid(cfg(SQUARE, { gridMode: 'plane' }));

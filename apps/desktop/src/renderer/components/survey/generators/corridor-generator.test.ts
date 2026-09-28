@@ -250,3 +250,41 @@ describe('turn radius drives the plan', () => {
     void metres;
   });
 });
+
+describe('width sets the strips from the photo edges', () => {
+  // Default Mavic 3E at 80 m: a photo covers ~112.5 m across, 45 m max gap.
+  const auto = { corridorStrips: 0, corridorMode: 'copter' } as const;
+
+  it('flies one strip when a photo already spans the corridor', () => {
+    const r = generateCorridor(config(STRAIGHT, { ...auto, corridorWidth: 60 }));
+    expect(r.stats.lineCount).toBe(1);
+  });
+
+  it('flies the fewest strips and spreads them to the corridor edges', () => {
+    const r = generateCorridor(config(STRAIGHT, { ...auto, corridorWidth: 300 }));
+    expect(r.stats.lineCount).toBe(6);
+    expect(r.stats.lineSpacing).toBeCloseTo(37.5, 1);
+    expect(r.stats.lineSpacing).toBeLessThanOrEqual(45);
+  });
+
+  it('an explicit strip count keeps the overlap spacing', () => {
+    const r = generateCorridor(config(STRAIGHT, { corridorStrips: 3, corridorMode: 'copter' }));
+    expect(r.stats.lineCount).toBe(3);
+    expect(r.stats.lineSpacing).toBeCloseTo(45, 0);
+  });
+});
+
+describe('camera on the strips only', () => {
+  it('turn loops and overshoots add no photos', () => {
+    const bent: LatLng[] = [
+      { lat: 0, lng: 0 },
+      { lat: 0, lng: 0.004 },
+      { lat: 0.004, lng: 0.004 },
+    ];
+    const base = { corridorStrips: 1, maxTurnAngle: 15 } as const;
+    const plane = generateCorridor(config(bent, { ...base, corridorMode: 'plane', overshoot: 80 }));
+    const copter = generateCorridor(config(bent, { ...base, corridorMode: 'copter' }));
+    expect(plane.waypoints.length).toBeGreaterThan(copter.waypoints.length);
+    expect(plane.stats.photoCount).toBe(copter.stats.photoCount);
+  });
+});
