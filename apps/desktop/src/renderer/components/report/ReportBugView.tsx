@@ -5,7 +5,7 @@
  * Collects app logs, system info, and optionally board configuration.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useConnectionStore } from '../../stores/connection-store';
 import { useParameterStore } from '../../stores/parameter-store';
 import { firmwareLabel } from '../../../shared/firmware-types';
@@ -25,6 +25,7 @@ export default function ReportBugView() {
   const [logHours, setLogHours] = useState(24);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState<ProgressState | null>(null);
+  const generatingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [encryptionInfo, setEncryptionInfo] = useState<{
@@ -53,7 +54,8 @@ export default function ReportBugView() {
   // Listen for progress updates
   useEffect(() => {
     const cleanup = window.electronAPI.onReportProgress((p) => {
-      setProgress(p);
+      // a stage event landing after the save resolved must not bring the spinner back
+      if (generatingRef.current) setProgress(p);
     });
     return () => { cleanup(); };
   }, []);
@@ -65,6 +67,7 @@ export default function ReportBugView() {
     }
 
     setIsGenerating(true);
+    generatingRef.current = true;
     setError(null);
     setSuccess(null);
     setProgress(null);
@@ -117,6 +120,7 @@ export default function ReportBugView() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
+      generatingRef.current = false;
       setIsGenerating(false);
       setProgress(null);
     }

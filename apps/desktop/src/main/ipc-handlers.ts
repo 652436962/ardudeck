@@ -220,7 +220,7 @@ import {
   createMspBoardDump,
   createMavlinkBoardDump,
   applyPrivacyFilter,
-  saveEncryptedReport,
+  encryptReport,
   getEncryptionInfo,
   type FileLogEntry,
   type BoardDump,
@@ -5236,8 +5236,9 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
             connectionState.packetsReceived++;
             noteVehicleTraffic();
 
-            // Detect signed incoming packets from FC
-            if (packet.isSigned && !connectionState.fcSigning) {
+            // Detect signed incoming packets from FC. Only a CRC-checked packet counts: an
+            // unknown msgid is unverified bytes, and its signed bit proves nothing.
+            if (packet.isSigned && packet.crcValidated && !connectionState.fcSigning) {
               connectionState.fcSigning = true;
               sendLog(mainWindow, 'info', 'FC is sending signed packets - MAVLink signing is active on the vehicle');
 
@@ -13086,14 +13087,16 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
       // Notify progress
       safeSend(mainWindow, IPC_CHANNELS.REPORT_PROGRESS, { stage: 'collecting', message: 'Collecting logs...' });
 
-      // Create payload
+      const t0 = Date.now();
       const payload = await createReportPayload(userDescription, boardDump, logHours);
+      sendLog(mainWindow, 'info', `Bug report: ${payload.app_logs.length} log entries collected in ${Date.now() - t0}ms`);
 
-      // Notify progress
       safeSend(mainWindow, IPC_CHANNELS.REPORT_PROGRESS, { stage: 'encrypting', message: 'Encrypting report...' });
 
-      // Encrypt and save
-      saveEncryptedReport(payload, filePath);
+      const t1 = Date.now();
+      const encrypted = encryptReport(payload);
+      sendLog(mainWindow, 'info', `Bug report: encrypted ${encrypted.length} bytes in ${Date.now() - t1}ms, writing ${filePath}`);
+      await writeFile(filePath, encrypted);
 
       sendLog(mainWindow, 'info', 'Bug report saved', filePath);
 

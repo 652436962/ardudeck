@@ -5,6 +5,9 @@
 
 import { SerialTransport } from '@ardudeck/comms';
 import {
+  MAVLinkParser,
+  getAllMessageInfos,
+  serializeV1,
   serializeV2,
   serializeCommandLong,
   COMMAND_LONG_ID,
@@ -411,27 +414,67 @@ export async function rebootToBootloaderMavlink(
     transport = new SerialTransport(port, { baudRate });
     await transport.open();
 
-    // Build MAVLink COMMAND_LONG for PREFLIGHT_REBOOT_SHUTDOWN
-    const payload = serializeCommandLong({
-      targetSystem: 1,
-      targetComponent: 1,
-      command: 246, // MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN
-      confirmation: 0,
-      param1: 3, // 3 = reboot into bootloader
-      param2: 0,
-      param3: 0,
-      param4: 0,
-      param5: 0,
-      param6: 0,
-      param7: 0,
-    });
+    // A command addressed to the wrong sysid is silently dropped, so learn the
+    // vehicle's sysid from its heartbeat instead of assuming 1.
+    const parser = new MAVLinkParser();
+    parser.registerMessages(getAllMessageInfos());
+    let vehicle: { sysid: number; compid: number; v2: boolean } | null = null;
+    let acked = false;
+    const onData = (data: Uint8Array) => {
+      parser.feed(data);
+      let pkt;
+      while ((pkt = parser.parseNext()) !== null) {
+        if (pkt.msgid === 0 && !vehicle) {
+          const type = pkt.payload.length > 4 ? pkt.payload[4]! : 0;
+          const autopilot = pkt.payload.length > 5 ? pkt.payload[5]! : 0;
+          // skip GCS (6), ADS-B/radios and invalid-autopilot heartbeats
+          if (type !== 6 && autopilot !== 8 && pkt.compid !== 68) {
+            vehicle = { sysid: pkt.sysid, compid: pkt.compid, v2: pkt.header === 0xFD };
+          }
+        } else if (pkt.msgid === 77 && vehicle && pkt.sysid === vehicle.sysid) {
+          const cmd = (pkt.payload[0] ?? 0) | ((pkt.payload[1] ?? 0) << 8);
+          const result = pkt.payload.length > 2 ? pkt.payload[2]! : 0;
+          if (cmd === 246 && result === 0) acked = true;
+        }
+      }
+    };
+    transport.on('data', onData);
 
-    // Wrap in MAVLink v2 frame
-    const packet = serializeV2(COMMAND_LONG_ID, payload, COMMAND_LONG_CRC_EXTRA, { sysid: 255, compid: 0 });
-    await transport.write(packet);
+    for (let i = 0; i < 25 && !vehicle; i++) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    const found = vehicle as { sysid: number; compid: number; v2: boolean } | null;
 
-    // Give it a moment to process
-    await new Promise(resolve => setTimeout(resolve, 100));
+    const send = async (targetSystem: number, targetComponent: number) => {
+      const payload = serializeCommandLong({
+        targetSystem,
+        targetComponent,
+        command: 246, // MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN
+        confirmation: 0,
+        param1: 3, // 3 = reboot into bootloader
+        param2: 0,
+        param3: 0,
+        param4: 0,
+        param5: 0,
+        param6: 0,
+        param7: 0,
+      });
+      const packet = found && !found.v2
+        ? serializeV1(COMMAND_LONG_ID, payload, COMMAND_LONG_CRC_EXTRA, { sysid: 255, compid: 0 })
+        : serializeV2(COMMAND_LONG_ID, payload, COMMAND_LONG_CRC_EXTRA, { sysid: 255, compid: 0 });
+      await transport!.write(packet);
+    };
+
+    // Broadcast copy as well, like uploader.py: covers a heartbeat we did not catch.
+    if (found) await send(found.sysid, found.compid);
+    await send(0, 0);
+
+    for (let i = 0; i < 10 && !acked; i++) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    transport.off('data', onData);
+
+    console.log(`[MAVLink] Reboot-to-bootloader sent to ${found ? `sysid ${found.sysid} compid ${found.compid}` : 'broadcast only (no heartbeat)'}, ack=${acked}`);
 
     // Close port before board reboots
     await transport.close();

@@ -2563,6 +2563,28 @@ export const SERIALRX_PROVIDER_NAMES: Record<number, string> = {
 };
 
 /**
+ * iNav serialrx_provider values. A different enum from Betaflight's: 6 is CRSF here,
+ * XBUS_MODE_B_RJ01 there. Names match the serial_rx table in iNav's settings.yaml.
+ */
+export const INAV_SERIALRX_PROVIDER_NAMES: Record<number, string> = {
+  0: 'SPEK1024',
+  1: 'SPEK2048',
+  2: 'SBUS',
+  3: 'SUMD',
+  4: 'IBUS',
+  5: 'JETIEXBUS',
+  6: 'CRSF',
+  7: 'FPORT',
+  8: 'SBUS_FAST',
+  9: 'FPORT2',
+  10: 'SRXL2',
+  11: 'GHST',
+  12: 'MAVLINK',
+  13: 'FBUS',
+  14: 'SBUS2',
+};
+
+/**
  * iNav receiver_type enum values (byte 23 of MSP_RX_CONFIG)
  */
 export const INAV_RECEIVER_TYPE_NAMES: Record<number, string> = {
@@ -2603,7 +2625,7 @@ export interface MSPRxConfig {
  *  22:  1 unused byte (fpvCamAngleDegrees, BF compat)
  *  23:  receiver_type (U8) — iNav only
  */
-export function deserializeRxConfig(payload: Uint8Array): MSPRxConfig {
+export function deserializeRxConfig(payload: Uint8Array, firmware: 'inav' | 'betaflight' = 'betaflight'): MSPRxConfig {
   const serialrxProvider = payload.length > 0 ? payload[0]! : 0;
 
   // receiver_type is at byte 23 (iNav only, payload must be >= 24 bytes)
@@ -2616,7 +2638,8 @@ export function deserializeRxConfig(payload: Uint8Array): MSPRxConfig {
 
   return {
     serialrxProvider,
-    serialrxProviderName: SERIALRX_PROVIDER_NAMES[serialrxProvider] ?? 'UNKNOWN',
+    serialrxProviderName:
+      (firmware === 'inav' ? INAV_SERIALRX_PROVIDER_NAMES : SERIALRX_PROVIDER_NAMES)[serialrxProvider] ?? 'UNKNOWN',
     receiverType,
     receiverTypeName,
     rawPayload: new Uint8Array(payload),

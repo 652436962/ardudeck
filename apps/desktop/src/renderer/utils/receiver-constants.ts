@@ -5,6 +5,8 @@
  * ReceiverWizard so the option lists stay in sync.
  */
 
+import { INAV_SERIALRX_PROVIDER_NAMES } from '@ardudeck/msp-ts';
+
 // =============================================================================
 // iNav
 // =============================================================================
@@ -20,7 +22,7 @@ export const INAV_QUICK_SELECT = [
   { value: 'CRSF', label: 'CRSF / ELRS' },
   { value: 'SBUS', label: 'SBUS' },
   { value: 'IBUS', label: 'iBUS' },
-  { value: 'SPEKTRUM2048', label: 'Spektrum' },
+  { value: 'SPEK2048', label: 'Spektrum' },
 ] as const;
 
 // =============================================================================
@@ -63,7 +65,7 @@ export const PROTOCOL_HINTS: Record<string, string> = {
   CRSF: 'Low-latency digital link. Used by TBS Crossfire and ExpressLRS receivers.',
   SBUS: 'Inverted serial protocol. Common with FrSky and RadioLink receivers. Some boards need a hardware inverter.',
   IBUS: 'FlySky digital protocol. Connect to a free UART RX pad.',
-  SPEKTRUM2048: 'Spektrum satellite receiver. Bind to transmitter first, then connect to UART.',
+  SPEK2048: 'Spektrum satellite receiver. Bind to transmitter first, then connect to UART.',
   FPORT: 'FrSky F.Port combines SBUS + telemetry on a single wire.',
   GHST: 'ImmersionRC Ghost ultra-low latency protocol.',
   SRXL2: 'Spektrum SRXL2 bidirectional serial protocol.',
@@ -94,7 +96,12 @@ export const INAV_RECEIVER_TYPE_INDEX: Record<string, number> = {
   'SIM (SITL)': 3,
 };
 
-/** Map serialrx_provider name → numeric value (byte 0 of RX_CONFIG) */
+/** iNav serialrx_provider name → numeric value. iNav's enum differs from Betaflight's (CRSF is 6, not 9). */
+export const INAV_SERIALRX_PROVIDER_INDEX: Record<string, number> = Object.fromEntries(
+  Object.entries(INAV_SERIALRX_PROVIDER_NAMES).map(([value, name]) => [name, Number(value)]),
+);
+
+/** Betaflight serialrx_provider name → numeric value (byte 0 of RX_CONFIG) */
 export const SERIALRX_PROVIDER_INDEX: Record<string, number> = {
   'SPEK1024': 0,
   'SPEK2048': 1,

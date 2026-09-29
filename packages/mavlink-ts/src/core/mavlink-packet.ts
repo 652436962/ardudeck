@@ -94,6 +94,7 @@ function parseV2Packet(buffer: Uint8Array, rxtime: Date): MAVLinkPacket {
     signature,
     isMavlink2: true,
     isSigned,
+    crcValidated: false,
   };
 }
 
@@ -136,6 +137,7 @@ function parseV1Packet(buffer: Uint8Array, rxtime: Date): MAVLinkPacket {
     crc16,
     isMavlink2: false,
     isSigned: false,
+    crcValidated: false,
   };
 }
 

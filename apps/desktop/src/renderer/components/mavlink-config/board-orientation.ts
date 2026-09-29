@@ -28,8 +28,9 @@ export const COMMON_ORIENTATIONS: BoardOrientation[] = [
   { value: 14, code: 'Yaw270Roll180', label: 'Upside down, arrow left' },
   { value: 16, code: 'Roll90', label: 'On its right edge' },
   { value: 20, code: 'Roll270', label: 'On its left edge' },
-  { value: 24, code: 'Pitch90', label: 'Nose down (vertical)' },
-  { value: 25, code: 'Pitch270', label: 'Nose up (vertical)' },
+  // Pitch90 turns the arrow up (positive pitch is nose up), Pitch270 down.
+  { value: 24, code: 'Pitch90', label: 'Standing, arrow up' },
+  { value: 25, code: 'Pitch270', label: 'Standing, arrow down' },
 ];
 
 /** Every value ArduPilot accepts, for the cases the common list does not name. */

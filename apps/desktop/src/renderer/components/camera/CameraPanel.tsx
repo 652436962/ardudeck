@@ -23,6 +23,7 @@ import { SyntheticVisionView } from './SyntheticVisionView';
 import { CameraSourceMenu } from './CameraSourceMenu';
 import { GimbalPad } from './GimbalPad';
 import { VisionStreamControl } from './VisionStream';
+import { describePeers } from './webrtc-diag';
 
 // Partial: the `waypoints` layer intentionally has no OSD toggle — the 3D
 // waypoint overlay is toggled from the HUD instruments editor (HudPanel) via the
@@ -299,7 +300,7 @@ export function CameraPanel() {
                   onClick={async () => {
                     setShowMoreMenu(false);
                     const text = await window.electronAPI.cameraDiagnostics();
-                    await navigator.clipboard.writeText(text);
+                    await navigator.clipboard.writeText(`${text}\n--- webrtc (this window) ---\n${await describePeers()}`);
                     flash('Video diagnostics copied');
                   }}
                 >

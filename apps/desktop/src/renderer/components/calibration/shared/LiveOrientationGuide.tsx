@@ -20,6 +20,7 @@ import {
 } from '../../../../shared/calibration-orientation';
 import type { AccelPosition } from '../../../../shared/calibration-types';
 import { OrientationScene } from './OrientationScene';
+import type { VehicleKind } from './vehicle-models';
 import { PositionDiagram } from './PositionDiagram';
 
 interface LiveOrientationGuideProps {
@@ -38,7 +39,7 @@ export function LiveOrientationGuide({ position, size = 220 }: LiveOrientationGu
   // as a live aircraft, least of all while someone is holding the thing.
   const live = useTelemetryFresh('attitude');
   const mavType = useConnectionStore((s) => s.connectionState.mavType);
-  const shape = getVehicleClass(mavType) === 'rover' ? 'rover' : 'copter';
+  const shape: VehicleKind = mavType === 11 ? 'boat' : getVehicleClass(mavType);
 
   const target = targetForPosition(position);
   const match = matchOrientation({ roll, pitch }, target, ORIENTATION_TOLERANCE_DEG);

@@ -236,7 +236,7 @@ export class MAVLinkParser {
       }
 
       this.stats.packetsReceived++;
-      this.packetQueue.push(packet);
+      this.packetQueue.push({ ...packet, crcValidated: true });
       this.consume(packetLength);
     }
   }

@@ -24,7 +24,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { PRIMARY_CHANNEL_COUNT, getChannelName, reorderChannels } from '../../utils/rc-channel-constants';
-import { SERIALRX_PROVIDER_INDEX } from '../../utils/receiver-constants';
+import { INAV_SERIALRX_PROVIDER_INDEX } from '../../utils/receiver-constants';
 
 // =============================================================================
 // Types
@@ -66,7 +66,7 @@ const RECEIVER_OPTIONS: ReceiverOption[] = [
     id: 'spektrum',
     label: 'Spektrum',
     description: 'DSMX/DSM2 satellite receiver',
-    inavProvider: 'SPEKTRUM2048',
+    inavProvider: 'SPEK2048',
     bfProvider: 1,
   },
   {
@@ -185,8 +185,10 @@ export default function ReceiverWizard({ isOpen, onClose, isInav }: ReceiverWiza
       // 1. Set receiver protocol via MSP_SET_RX_CONFIG (45) — reliable for both iNav and BF
       if (isInav) {
         const rxTypeIdx = selectedRx.id === 'msp' ? 2 : 1; // 2=MSP, 1=SERIAL
-        const providerIdx = SERIALRX_PROVIDER_INDEX[selectedRx.inavProvider];
-        await window.electronAPI?.mspSetRxConfig(providerIdx ?? selectedRx.bfProvider, rxTypeIdx);
+        // An MSP receiver has no serial provider; keep whatever the board has.
+        const providerIdx = INAV_SERIALRX_PROVIDER_INDEX[selectedRx.inavProvider]
+          ?? (await window.electronAPI?.mspGetRxConfig())?.serialrxProvider;
+        if (providerIdx !== undefined) await window.electronAPI?.mspSetRxConfig(providerIdx, rxTypeIdx);
       } else {
         await window.electronAPI?.mspSetRxConfig(selectedRx.bfProvider);
       }

@@ -22,7 +22,7 @@ import {
   BF_PROTOCOL_HINTS,
   SERIAL_FUNCTION_BIT_RX,
   INAV_RECEIVER_TYPE_INDEX,
-  SERIALRX_PROVIDER_INDEX,
+  INAV_SERIALRX_PROVIDER_INDEX,
 } from '../../../utils/receiver-constants';
 import type { SerialPort } from '../../../stores/receiver-store';
 
@@ -235,7 +235,7 @@ export const TransmitterCheckStep: React.FC = () => {
 
       // 2. Set receiver protocol via MSP_SET_RX_CONFIG (45) — works for both iNav and BF
       if (isInav) {
-        const providerIdx = inavProvider != null ? SERIALRX_PROVIDER_INDEX[inavProvider] : undefined;
+        const providerIdx = inavProvider != null ? INAV_SERIALRX_PROVIDER_INDEX[inavProvider] : undefined;
         const rxTypeIdx = rxType != null ? INAV_RECEIVER_TYPE_INDEX[rxType] : undefined;
         if (providerIdx !== undefined) {
           await window.electronAPI?.mspSetRxConfig(providerIdx, rxTypeIdx);

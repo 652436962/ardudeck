@@ -20,12 +20,12 @@ import {
 } from '../../../../shared/calibration-orientation';
 import type { AccelPosition } from '../../../../shared/calibration-types';
 import { useResolvedTheme } from '../../../hooks/useTheme';
+import { buildVehicleModel, vehiclePalette, type VehicleKind } from './vehicle-models';
 
 interface OrientationSceneProps {
   /** Which of the six ArduPilot positions. Ignored when `target` is given. */
   position?: AccelPosition;
-  /** Draw a car instead of a quad on ground vehicles. */
-  shape?: 'copter' | 'rover';
+  shape?: VehicleKind;
   /**
    * An explicit attitude to hold, in degrees, overriding `position`.
    *
@@ -45,79 +45,24 @@ const COLOR_TARGET = 0x64748b;
 const COLOR_MOVING = 0x38bdf8;
 const COLOR_LOCKED = 0x22c55e;
 
-/**
- * A compact quad: body, four arms with motors, and a nose marker so roll and
- * pitch are unambiguous at a glance. Returned as a group so the whole aircraft
- * can be rotated as one.
- */
-function buildAircraft(color: number, ghost: boolean, ghostOpacity = 0.35): THREE.Group {
+// Callers scale the returned group for the lock-on pulse, so the size fit lives on the inner model.
+function buildVehicle(kind: VehicleKind, color: number, ghost: boolean, ghostOpacity = 0.35): THREE.Group {
+  const { group: model } = buildVehicleModel(kind, vehiclePalette(false));
+  model.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if (ghost) {
+      mesh.visible = !mesh.userData.disc;
+      mesh.material = new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: ghostOpacity });
+    } else if (!mesh.userData.keepColor && !mesh.userData.disc) {
+      (mesh.material as THREE.MeshStandardMaterial).color.setHex(color);
+    }
+  });
+  model.scale.setScalar(0.48);
+  model.position.y = 0.2;
   const group = new THREE.Group();
-  const material = ghost
-    ? new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: ghostOpacity })
-    : new THREE.MeshStandardMaterial({ color, metalness: 0.25, roughness: 0.45 });
-
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.28, 0.9), material);
-  group.add(body);
-
-  // Nose block: the one asymmetric feature, so "nose down" reads instantly.
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.2, 0.3), material);
-  nose.position.set(0.66, 0.02, 0);
-  group.add(nose);
-
-  const armGeometry = new THREE.BoxGeometry(1.05, 0.09, 0.09);
-  const motorGeometry = new THREE.CylinderGeometry(0.16, 0.16, 0.18, 16);
-  for (const [dx, dz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const) {
-    const arm = new THREE.Mesh(armGeometry, material);
-    arm.position.set(dx * 0.5, 0, dz * 0.5);
-    arm.rotation.y = dx * dz > 0 ? Math.PI / 4 : -Math.PI / 4;
-    group.add(arm);
-
-    const motor = new THREE.Mesh(motorGeometry, material);
-    motor.position.set(dx * 0.82, 0.1, dz * 0.72);
-    group.add(motor);
-  }
-
+  group.add(model);
   return group;
-}
-
-/** Scene axes: X forward, Y up, Z right. Wheels turn about the vehicle's Y. */
-function buildRover(color: number, ghost: boolean, ghostOpacity = 0.35): THREE.Group {
-  const group = new THREE.Group();
-  const material = ghost
-    ? new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: ghostOpacity })
-    : new THREE.MeshStandardMaterial({ color, metalness: 0.25, roughness: 0.45 });
-
-  const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.2, 0.72), material);
-  group.add(chassis);
-
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.26, 0.62), material);
-  cabin.position.set(-0.1, 0.22, 0);
-  group.add(cabin);
-
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.5), material);
-  nose.position.set(0.72, 0.02, 0);
-  group.add(nose);
-
-  const wheel = new THREE.CylinderGeometry(0.26, 0.26, 0.18, 18);
-  for (const [dx, dz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const) {
-    const w = new THREE.Mesh(wheel, material);
-    w.rotation.x = Math.PI / 2;
-    w.position.set(dx * 0.48, -0.12, dz * 0.44);
-    group.add(w);
-  }
-
-  return group;
-}
-
-function buildVehicle(
-  shape: 'copter' | 'rover',
-  color: number,
-  ghost: boolean,
-  ghostOpacity = 0.35,
-): THREE.Group {
-  return shape === 'rover'
-    ? buildRover(color, ghost, ghostOpacity)
-    : buildAircraft(color, ghost, ghostOpacity);
 }
 
 /**
@@ -128,7 +73,7 @@ function buildVehicle(
  * wrong is what makes an indicator move the wrong way, which is worse than no
  * indicator at all.
  */
-function applyAttitude(object: THREE.Object3D, roll: number, pitch: number): void {
+export function applyAttitude(object: THREE.Object3D, roll: number, pitch: number): void {
   object.rotation.set(0, 0, 0);
   object.rotateZ(pitch);
   object.rotateX(roll);
@@ -222,6 +167,7 @@ export function OrientationScene({ position, roll, pitch, live, size = 220, shap
         const colour = new THREE.Color(matched ? COLOR_LOCKED : COLOR_MOVING);
         vehicle.traverse((child) => {
           const mesh = child as THREE.Mesh;
+          if (mesh.userData.keepColor || mesh.userData.disc) return;
           const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
           if (mat && 'color' in mat) {
             mat.color.copy(colour);

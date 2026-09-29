@@ -21,6 +21,7 @@
 import { spawn, type ChildProcess, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync, statSync } from 'node:fs';
+import { networkInterfaces } from 'node:os';
 import { app } from 'electron';
 import { mediaBinariesDownloader } from './media-binaries-downloader.js';
 import { buildWfbngSdp, buildWfbngFfmpegArgs, wfbngPort, wfbngShouldTranscode } from './wfbng.js';
@@ -94,6 +95,11 @@ export class MediaEngine {
   private relayEncoder: string | null = null;
   /** Periodic stall check for bridged (wfb-ng) sessions. */
   private watchdog: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Last seen state of each hub WebRTC session, newest last. The hub deletes a session
+   * the moment it times out, so a later Diag click would otherwise find nothing.
+   */
+  private webrtcSeen = new Map<string, string>();
   logSink?: (level: 'info' | 'warn' | 'error', msg: string) => void;
 
   /** Resolve binaries; idempotent. Called lazily on first use. */
@@ -543,6 +549,7 @@ export class MediaEngine {
       }
     }
 
+    this.sampleWebrtcSessions();
     const session: CameraStreamSession = {
       sourceId: source.id,
       vehicleKey: source.vehicleKey,
@@ -717,7 +724,8 @@ export class MediaEngine {
         size = `${Math.round(statSync(path).size / 1024)} KB`;
       } catch { /* a path that resolved from PATH has no stat here */ }
       lines.push(`${name}: ${path} (${size})`);
-      const probe = spawnSync(path, ['-version'], { encoding: 'utf8' });
+      // mediamtx only knows --version; given ffmpeg's -version it prints its usage instead.
+      const probe = spawnSync(path, [name === 'mediamtx' ? '--version' : '-version'], { encoding: 'utf8' });
       const first = (probe.stdout ?? '').split('\n')[0]?.trim();
       lines.push(`  ${probe.error ? `spawn failed: ${probe.error.message}` : first ?? 'no version output'}`);
     }
@@ -734,11 +742,50 @@ export class MediaEngine {
       if (s.error) lines.push(`  error: ${s.error}`);
     }
 
+    lines.push('--- network adapters ---', ...networkSummary());
+    await this.recordWebrtcSessions();
+    lines.push('--- hub webrtc sessions (last seen) ---', ...(this.webrtcSeen.size ? [...this.webrtcSeen.values()] : ['none seen']));
+
     const hub = this.recentHubLog(30);
     if (hub.length) lines.push('--- mediamtx ---', ...hub);
     const ff = this.recentFfmpegLog(30);
     if (ff.length) lines.push('--- ffmpeg ---', ...ff);
     return lines.join('\n');
+  }
+
+  /** Poll the hub's WebRTC sessions for a while after a playback starts. */
+  private sampleWebrtcSessions(): void {
+    let n = 0;
+    const t = setInterval(() => {
+      n += 1;
+      void this.recordWebrtcSessions();
+      if (n >= 15) clearInterval(t);
+    }, 1000);
+  }
+
+  private async recordWebrtcSessions(): Promise<void> {
+    try {
+      const res = await fetch(`http://${HOST}:${API_PORT}/v3/webrtcsessions/list`);
+      if (!res.ok) return;
+      const body = (await res.json()) as { items?: Record<string, unknown>[] };
+      for (const s of body.items ?? []) {
+        const id = String(s.id ?? '?');
+        this.webrtcSeen.delete(id);
+        this.webrtcSeen.set(id, [
+          `${id.slice(0, 8)} ${String(s.state ?? '?')} path=${String(s.path ?? '?')}`,
+          `established=${String(s.peerConnectionEstablished ?? '?')}`,
+          `local=${String(s.localCandidate ?? '-') || '-'} remote=${String(s.remoteCandidate ?? '-') || '-'}`,
+          `from=${String(s.remoteAddr ?? '?')} in=${String(s.bytesReceived ?? 0)} out=${String(s.bytesSent ?? 0)}`,
+        ].join(' '));
+      }
+      while (this.webrtcSeen.size > 8) {
+        const oldest = this.webrtcSeen.keys().next().value;
+        if (oldest === undefined) break;
+        this.webrtcSeen.delete(oldest);
+      }
+    } catch {
+      /* hub down; nothing to record */
+    }
   }
 
   /** ffmpeg's recent output, for the console entry beside the hub log. */
@@ -766,6 +813,16 @@ export class MediaEngine {
     this.hub = null;
     this.hubReady = false;
   }
+}
+
+/** Adapters and their IPv4 addresses: VPN, virtual and loopback adapters decide which paths WebRTC can take. */
+function networkSummary(): string[] {
+  const out: string[] = [];
+  for (const [name, addrs] of Object.entries(networkInterfaces())) {
+    const v4 = (addrs ?? []).filter((a) => a.family === 'IPv4').map((a) => a.address);
+    if (v4.length) out.push(`${name}: ${v4.join(', ')}`);
+  }
+  return out.length ? out : ['none'];
 }
 
 function delay(ms: number): Promise<void> {

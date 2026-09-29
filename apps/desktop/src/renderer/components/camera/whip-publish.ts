@@ -1,4 +1,7 @@
 import type { StreamPublishStats } from '../../../shared/camera-types';
+import { candidateSummary, trackPeer } from './webrtc-diag';
+
+export { candidateSummary };
 
 /** WHIP publisher, the send-side twin of camera/whep.ts. MediaMTX re-serves the track over RTSP. */
 
@@ -73,6 +76,7 @@ export async function publishWhip(
   opts: { scaleDown?: number; maxBitrate?: number; maxFramerate?: number } = {},
 ): Promise<WhipSession> {
   const pc = new RTCPeerConnection({ iceServers: [] });
+  const setRemote = trackPeer(`publish ${whipUrl}`, pc);
   const t0 = performance.now();
   const timeline: string[] = [];
   const mark = (what: string) => timeline.push(`${what}@${Math.round(performance.now() - t0)}ms`);
@@ -115,6 +119,7 @@ export async function publishWhip(
   }
   const location = res.headers.get('location');
   const answer = await res.text();
+  setRemote(answer);
   await pc.setRemoteDescription({ type: 'answer', sdp: answer });
 
   // CV readers want stable frame geometry, so shed frame rate under load instead.
@@ -163,16 +168,4 @@ function waitForIce(pc: RTCPeerConnection): Promise<void> {
     pc.addEventListener('icegatheringstatechange', check);
     setTimeout(done, 1500);
   });
-}
-
-/** "udp 10.0.0.2:5000 host, tcp ..." from the a=candidate lines of an SDP. */
-export function candidateSummary(sdp: string): string {
-  const out = sdp
-    .split(/\r?\n/)
-    .filter((l) => l.startsWith('a=candidate:'))
-    .map((l) => {
-      const f = l.split(' ');
-      return `${f[2] ?? '?'} ${f[4] ?? '?'}:${f[5] ?? '?'} ${f[7] ?? '?'}`;
-    });
-  return out.length ? out.join(', ') : 'no candidates';
 }

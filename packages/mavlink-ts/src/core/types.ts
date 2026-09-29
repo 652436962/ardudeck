@@ -56,6 +56,11 @@ export interface MAVLinkPacket {
   readonly isMavlink2: boolean;
   /** True if packet is signed */
   readonly isSigned: boolean;
+  /**
+   * True only when the CRC was checked and matched. An unknown msgid has no CRC_EXTRA to
+   * check against, so its header (sysid, flags, signed bit) may just be bytes that framed.
+   */
+  readonly crcValidated: boolean;
 }
 
 /**

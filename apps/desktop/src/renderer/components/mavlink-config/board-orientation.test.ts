@@ -67,4 +67,9 @@ describe('drawing an orientation', () => {
   it('survives a value with no name', () => {
     expect(orientationRotation(999)).toEqual({ yaw: 0, pitch: 0, roll: 0 });
   });
+
+  it('labels the vertical mountings by the sign of pitch', () => {
+    expect(orientationName(24)).toBe('Standing, arrow up');
+    expect(orientationName(25)).toBe('Standing, arrow down');
+  });
 });

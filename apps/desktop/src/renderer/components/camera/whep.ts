@@ -3,8 +3,11 @@
  * <video> element. recvonly; we POST our SDP offer and apply the answer.
  */
 
+import { trackPeer } from './webrtc-diag';
+
 export async function playWhep(video: HTMLVideoElement, whepUrl: string): Promise<RTCPeerConnection> {
   const pc = new RTCPeerConnection({ iceServers: [] });
+  const setRemote = trackPeer(`play ${whepUrl}`, pc);
   pc.addTransceiver('video', { direction: 'recvonly' });
   pc.addTransceiver('audio', { direction: 'recvonly' });
 
@@ -52,6 +55,7 @@ export async function playWhep(video: HTMLVideoElement, whepUrl: string): Promis
     throw new Error(`WHEP ${res?.status ?? 'no-response'} ${reason || res?.statusText || ''}`.trim());
   }
   const answer = await res.text();
+  setRemote(answer);
   await pc.setRemoteDescription({ type: 'answer', sdp: answer });
   return pc;
 }

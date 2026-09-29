@@ -139,4 +139,27 @@ describe('MAVLinkParser stream robustness', () => {
     expect(packets[0]!.msgid).toBe(60000);
     expect(parser.getStats().unknownMessage).toBe(1);
   });
+
+  it('marks a registered packet whose CRC checked out as validated', () => {
+    parser.feed(makeHeartbeat());
+    expect(drain(parser)[0]!.crcValidated).toBe(true);
+  });
+
+  it('marks an unknown message id as not validated, since its CRC cannot be checked', () => {
+    parser.feed(serializeV2(60000, new Uint8Array([1, 2, 3]), 0, { sysid: 1, compid: 1 }));
+    expect(drain(parser)[0]!.crcValidated).toBe(false);
+  });
+
+  it('does not vouch for a "signed" flag on a frame it could not validate', () => {
+    // Non-MAVLink bytes that happen to frame as v2 with the signed bit set: the flag is
+    // whatever the byte was, and must not be read as the vehicle requiring signing.
+    const unsigned = serializeV2(60000, new Uint8Array([1, 2, 3]), 0, { sysid: 227, compid: 110 });
+    const frame = new Uint8Array(unsigned.length + 13);
+    frame.set(unsigned);
+    frame[2] = frame[2]! | 0x01;
+    parser.feed(frame);
+    const [packet] = drain(parser);
+    expect(packet!.isSigned).toBe(true);
+    expect(packet!.crcValidated).toBe(false);
+  });
 });

@@ -19,6 +19,7 @@ import {
   deserializeOsdConfig,
   serializeOsdElementPosition,
   serializeOsdCharWrite,
+  INAV_SERIALRX_PROVIDER_NAMES,
   deserializeRxConfig,
   serializeRxConfig,
   SERIALRX_PROVIDER_NAMES,
@@ -368,7 +369,7 @@ export async function getRxConfig(): Promise<RxConfigResult | null> {
   return withConfigLock(async () => {
     try {
       const response = await sendMspRequest(MSP.RX_CONFIG, 2000);
-      const base = deserializeRxConfig(response);
+      const base = deserializeRxConfig(response, ctx.isInavFirmware ? 'inav' : 'betaflight');
 
       // Parse receiver_type from byte 23 (iNav only, payload >= 24 bytes)
       let receiverType: number | null = null;
@@ -414,10 +415,11 @@ export async function setRxConfig(newProvider: number, newReceiverType?: number)
     try {
       // Step 1: Read current config to get full payload
       const response = await sendMspRequest(MSP.RX_CONFIG, 2000);
-      const currentConfig = deserializeRxConfig(response);
+      const currentConfig = deserializeRxConfig(response, ctx.isInavFirmware ? 'inav' : 'betaflight');
+      const names = ctx.isInavFirmware ? INAV_SERIALRX_PROVIDER_NAMES : SERIALRX_PROVIDER_NAMES;
       console.log('[MSP] RX_CONFIG read for modify:', {
         currentProvider: currentConfig.serialrxProviderName,
-        newProvider: SERIALRX_PROVIDER_NAMES[newProvider] ?? newProvider,
+        newProvider: names[newProvider] ?? newProvider,
         newReceiverType,
         payloadLength: currentConfig.rawPayload.length,
       });

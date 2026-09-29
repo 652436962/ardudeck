@@ -137,18 +137,33 @@ async function candidateVolumes(): Promise<string[]> {
     // Probe drive letters D-Z; A-C are floppy/system by convention.
     return Array.from({ length: 23 }, (_, i) => `${String.fromCharCode(68 + i)}:\\`);
   }
-  // Linux: common removable-media roots
-  const roots = ['/media', `/run/media/${process.env.USER ?? ''}`];
-  const found: string[] = [];
+  // Linux: udisks mounts at /media/<user>/<label> (Debian/Ubuntu) or
+  // /run/media/<user>/<label> (Fedora/Arch); /proc/self/mounts catches the rest.
+  const found = new Set<string>();
+  try {
+    const mounts = await readFile('/proc/self/mounts', 'utf8');
+    for (const line of mounts.split('\n')) {
+      const [, rawMount, fsType] = line.split(' ');
+      if (!rawMount || !fsType) continue;
+      const mount = rawMount.replace(/\\([0-7]{3})/g, (_, o: string) => String.fromCharCode(parseInt(o, 8)));
+      const removableFs = /^(vfat|exfat|msdos|fuseblk|ntfs3?)$/.test(fsType);
+      const removableRoot = /^\/(media|run\/media|mnt)\//.test(mount);
+      if (removableFs || removableRoot) found.add(mount);
+    }
+  } catch {
+    // no procfs; fall through to directory walk
+  }
+  const roots = ['/media', '/run/media', '/mnt'];
   for (const root of roots) {
-    try {
-      const entries = await readdir(root);
-      for (const e of entries) found.push(path.join(root, e));
-    } catch {
-      // root doesn't exist on this distro; skip
+    for (const e of await readdir(root).catch(() => [] as string[])) {
+      const level1 = path.join(root, e);
+      found.add(level1);
+      for (const e2 of await readdir(level1).catch(() => [] as string[])) {
+        found.add(path.join(level1, e2));
+      }
     }
   }
-  return found;
+  return [...found];
 }
 
 /** Scan all mounted volumes for EdgeTX SD cards. */
