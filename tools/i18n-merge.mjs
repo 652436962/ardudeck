@@ -128,13 +128,17 @@ function addKey(text, ns, belowNs, value, insertions, created) {
     return;
   }
 
-  // The group does not exist yet: create it at the namespace's child level.
-  const childIndent = 4;
-  created.add(parent);
-  insertions.push({
-    idx: block.endIdx,
-    line: `    ${parent}: {\n${' '.repeat(childIndent + 2)}${quote}\n    },`,
-  });
+  // The group does not exist yet. Insertions are collected against the original
+  // line numbers and applied at the end, so a group created by an earlier key in
+  // this same run is invisible to `scanNamespace` — without `created` remembering
+  // it, every key would open its own duplicate group object (TS1117).
+  let open = created.get(parent);
+  if (!open) {
+    open = { idx: block.endIdx, header: `    '${escape(parent)}': {`, leaves: [] };
+    created.set(parent, open);
+    insertions.push(open);
+  }
+  open.leaves.push(`      ${quote}`);
 }
 
 /** Create a namespace that is not in the bundle yet, in alphabetical place. */
@@ -146,7 +150,7 @@ function createNamespace(text, ns, rows) {
 
   const groups = new Map();
   for (const [key, value] of rows) {
-    const { parent, leaf } = splitKey(key.slice(ns.length + 1));
+    const { parent, leaf } = splitKey(key);
     const bucket = parent ?? '';
     if (!groups.has(bucket)) groups.set(bucket, []);
     groups.get(bucket).push([leaf, value]);
@@ -155,7 +159,7 @@ function createNamespace(text, ns, rows) {
   const body = [];
   for (const [leaf, value] of groups.get('') ?? []) body.push(`    '${escape(leaf)}': '${escape(value)}',`);
   for (const bucket of [...groups.keys()].filter(Boolean).sort()) {
-    body.push(`    ${bucket}: {`);
+    body.push(`    '${escape(bucket)}': {`);
     for (const [leaf, value] of groups.get(bucket)) body.push(`      '${escape(leaf)}': '${escape(value)}',`);
     body.push('    },');
   }
@@ -170,7 +174,8 @@ function createNamespace(text, ns, rows) {
 function applyInsertions(text, insertions) {
   const lines = text.split('\n');
   for (const ins of [...insertions].sort((a, b) => b.idx - a.idx)) {
-    lines.splice(ins.idx, 0, ...ins.line.split('\n'));
+    const parts = ins.line !== undefined ? ins.line.split('\n') : [ins.header, ...ins.leaves, '    },'];
+    lines.splice(ins.idx, 0, ...parts);
   }
   return lines.join('\n');
 }
@@ -189,7 +194,8 @@ function dump() {
     const other = zh.get(ns) ?? new Map();
     const keys = [];
     for (const [path, leaf] of leaves) {
-      keys.push([`${ns}.${path}`, leaf.value, other.get(path)?.value ?? '']);
+      // In-namespace key, the same spelling a component passes to t().
+      keys.push([path, leaf.value, other.get(path)?.value ?? '']);
     }
     tables.push({ namespace: ns, file: 'dump', keys });
   }
@@ -241,7 +247,6 @@ function main() {
       }
       const [key, en, zh] = row;
       if (key.includes("'")) throw new Error(`${name}: a key may not contain a quote: ${key}`);
-      if (!/^[A-Za-z][\w-]*\./.test(key)) throw new Error(`${name}: key must start with its namespace: ${key}`);
       if (typeof en !== 'string' || typeof zh !== 'string') {
         throw new Error(`${name}: ${key} needs string English and Chinese`);
       }
@@ -293,12 +298,15 @@ function main() {
 
     const enIns = [];
     const zhIns = [];
-    const madeGroups = new Set();
+    // One per bundle: sharing this map let the Chinese pass append its leaves to
+    // the group object the English pass had opened, writing Chinese into en.ts.
+    const madeEn = new Map();
+    const madeZh = new Map();
     let added = 0;
     let present = 0;
 
     for (const [key, value, chinese] of rows) {
-      const belowNs = key.slice(ns.length + 1);
+      const belowNs = key;
       const already = enBlock.leaves.get(belowNs);
       const alreadyZh = zhBlock.leaves.get(belowNs);
       if (already || alreadyZh) {
@@ -313,9 +321,8 @@ function main() {
         present += 1;
         continue;
       }
-      if (key.slice(0, ns.length + 1) !== `${ns}.`) throw new Error(`${key} is not in namespace ${ns}`);
-      addKey(nextEn, ns, belowNs, value, enIns, madeGroups);
-      addKey(nextZh, ns, belowNs, chinese, zhIns, madeGroups);
+      addKey(nextEn, ns, belowNs, value, enIns, madeEn);
+      addKey(nextZh, ns, belowNs, chinese, zhIns, madeZh);
       added += 1;
     }
 

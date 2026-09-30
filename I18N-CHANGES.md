@@ -561,3 +561,107 @@
 
 1. **`I18N_NAMESPACES` 漏登记 `mavlink` / `mission` / `nav`**。我一度以为这意味着这几百条翻译在运行时根本不生效。**实测否定了这个怀疑**：`resources` 是内联传入的，i18next 已把它们放进 store，即使不在 `ns` 数组里，`t('fm.x', { ns: 'mavlink' })` 和 `t('mavlink:fm.x')` 都正确返回「飞行模式」。所以**没有用户可见缺陷**，原判断是错的。仍把列表补全并改为有序，因为它是一份清单，写漏了就失去意义（改动零风险，已由同一实验覆盖）。
 2. **`serialPorts.setupElrs3` / `setupGps4` 中文为空串**。不是漏译：英文用 `... 115200 baud` 收尾，中文语序把「波特率」提前到前一段，末段自然为空。工具原先「中英文都非空」的校验会误拦这种合法情况，已放宽为**允许空值但逐条列出**，交人工确认。
+
+## 二十三、第十八轮：并行铺开 6 个文件 + 新增 `tools/i18n-check.mjs`
+
+上一轮把「合并」工具化之后，这一轮开始并行：我一次派 4~6 个子代理各自改**一个文件**并**只产出一张 `[键, 英文, 中文]` 表**，语言包由我在主线统一合并。子代理互不接触语言包，因此不会冲突。
+
+| # | 文件 | 翻译条数 | 命名空间 / 前缀 | 扫描器口径 |
+|---|---|---|---|---|
+| 84 | `components/parameters/MspConfigView.tsx` | 313 | `params` / `msp` | 124 → 1 |
+| 85 | `components/survey/SurveyConfigPanel.tsx` | 210 | `views` / `survey` | 60 → 2 |
+| 86 | `components/radio-hud/RadioHudView.tsx` | 191 | `views` / `radioHud` | 59 → 8 |
+| 87 | `feature-tours/registry.tsx` | 68 | `views` / `tours` | 96 → 96（见下） |
+| 88 | `components/parameters/NavigationTab.tsx` | 85 | `params` / `navTab` | 47 → 0 |
+| 89 | `components/tours/*.tsx`（导览弹窗/门控/导航按钮） | 34 | `views` / `tours.ui` | 5 个文件 → 0 |
+| 90 | 语言包 `views` 命名空间（278 + 191 + 34 键）、`params` 命名空间（313 + 85 键），注册 `views` | — | — | — |
+
+**第 89 项是我自己做的**：子代理只被授权改 3 个文件，但它报出 `TourLaunchGate.tsx` / `TourPanelsGate.tsx` 仍在渲染英文 `tour.title`（还有「Tour needs a vehicle」「取消」「跳过此导览」等）。我把 `components/tours/` 整个目录一次做完，并把 `components/tours/index.ts`（子代理新建的 barrel）**删除**，改为按仓库既有约定在 `feature-tours/index.ts` 里补类型与 `useTourText` 的再导出。
+
+**为什么 `registry.tsx` 仍是 96**：该文件是**数据注册表**，`steps[].content` 里的 JSX 是英文原文。运行时只有「当前语言是英文」才渲染这段 JSX，其它语言走 `ActiveTour` 里重建的翻译文本。扫描器按正则统计文件内字面量，无法知道渲染分支，所以这 96 条是**口径高估**，不是漏译。同类的还有 `RadioHudView` 残留 8 条与 `ArduPilotSitlTab` 残留 18 条（正在收尾）。
+
+## 二十四、工具：新增 `tools/i18n-check.mjs`（不信任自述的核对）
+
+子代理会汇报「used = declared，双向一致」。这个汇报可能是错的，而肉眼看不出来。所以写了这个核对器，**从产物出发**逐表检查三件事：
+
+1. **用了但没声明** —— 文件里 `t('x.y')` 或 `labelKey: 'x.y'` 指向表里没有的键（运行时回退英文）；
+2. **声明了但没用** —— 表里有键，文件里一次都没出现（死键）；
+3. **语言包有问题** —— 键不在语言包里，或英文值与表不符，或中文为空。
+
+语言包的「到底有哪些键」不自己解析，而是复用 `i18n-merge.mjs --dump`，避免两处实现同一件事。
+
+**这个工具立刻抓到了三个我自己写出来的严重缺陷**（下面第二十五节）。
+
+## 二十五、我在本轮工具里造出并修掉的三个缺陷（如实记录）
+
+**缺陷 A：组名没加引号。** 语言包按「首段作分组对象」组织，而导览的 id 形如 `altitude-planning-beta1`。我原先写成 `altitude-planning-beta1: {`——**连字符会被 JS 解析成减法**，`tsc` 报 TS1005/TS1136。修法：组名一律写成 `'name': {`。
+
+**缺陷 B：键的层级约定前后不一致。** 组件传给 `t()` 的是**命名空间内键**（`survey.title`，命名空间另给），而我的 `--dump` 输出的是**全限定键**（`views.survey.title`）。合并逻辑按「表里是全限定键」去 `slice(命名空间长度+1)`，于是把 `survey.action.cancel` 削成了 `.action.cancel`，键**静默变成** `action.cancel`——`tsc` 照样通过，运行时全部回退英文。修法：统一约定为**命名空间内键**，`--dump` 也按此输出。**这一条是 `i18n-check` 抓到的**：它报「语言包里没有 `survey.action.cancel`」，而我原以为已经并好了。
+
+**缺陷 C：中英共用一个「已建分组」表。** 合并时先往 `en.ts` 插英文、再往 `zh-CN.ts` 插中文，但我把同一个 `created` 表传给了两次调用。于是中文那一遍认为分组「已经建过了」，把**中文叶子挂进了英文那一遍的分组对象里**——`en.ts` 里出现 `'common.axis-roll': 'Roll'` 和 `'common.axis-roll': '横滚'` 成对重复，`tsc` 报 TS1117。同一根因还有第二个表现：延迟插入让「本遍刚建的分组」在下一次 `scanNamespace` 里看不见，于是 313 个键各建了一个 `'msp': {`，`tsc` 又报 313 条 TS1117。修法：中英各自一个 `created` 表，且分组建立后记在表里供本遍后续键复用。
+
+三个缺陷都逃过了 `tsc` 的部分检查（B 完全静默），是核对器与独立计数抓出来的。这也说明为什么不能只靠子代理的自述。
+
+**验证（★ 实测）**：`tools/i18n-check.mjs` 对 msp / survey / radioHud / tours / navTab 五张表全部 OK；`--dump` 往返 **2101 键**、语言包**字节不变**；独立正则计数同为 **2101**；`tsc --noEmit` 通过。
+
+**口径**：全局 **3397 → 2946**（-451）。
+
+## 二十六、第十九轮：第二波并行（11 个文件）+ 端到端运行时校验
+
+| # | 文件 | 条数 | 命名空间 / 前缀 |
+|---|---|---|---|
+| 91 | `components/logs/LogExplorerPanel.tsx` | 158 | `views` / `logs` |
+| 92 | `components/logs/log-y-scales.ts` + 消费点（我自己接线） | 6 | `views` / `logs.yMode` |
+| 93 | `components/sitl/SitlView.tsx` | 92 | `views` / `sitl.view` |
+| 94 | `components/sitl/ArduPilotSitlTab.tsx` | 138 | `views` / `sitl.ardupilot` |
+| 95 | `components/parameters/ParametersView.tsx` | 121 | `params` / `paramsView` |
+| 96 | `shared/parameter-groups.ts` + `parameters/non-default-palette.ts` + 消费点（我自己接线） | 32 | `params` / `group.*`、`palette.*` |
+| 97 | `components/mavlink-config/Px4ArmingConfig.tsx` | 42 | `mavlink` / `px4Arming` |
+| 98 | `components/parameters/VtxConfigTab.tsx` | 57 | `params` / `vtx` |
+
+**我自己接线的两处**（子代理无权改这些文件，故在其报告里点名后由我完成）：
+- `log-y-scales.ts` 的 `Y_MODE_LABEL` / `Y_MODE_TIP`：新增 `Y_MODE_LABEL_KEY` / `Y_MODE_TIP_KEY` 映射，消费者两处按 `lgText(t, KEY[x], LITERAL[x])` 渲染。
+- `parameter-groups.ts` 的 12 个分组加 `nameKey`/`descriptionKey`，`non-default-palette.ts` 的 8 个色块加 `labelKey`，并在 `ParametersView` 的 4 个渲染点接入（分组页签标签、页签 tooltip、状态栏「分组：」、色块 title/aria-label）。`ParameterTable` 是同一批数据的另一个消费者，已交给对应子代理复用这同一批键，避免重复定义。
+
+**未翻译且判定为不该翻译**：`shared/parameter-types.ts` 的 `getParamTypeName()` 返回 `UINT8`/`FLOAT`/`DOUBLE` 等——MAVLink 参数类型名，是协议标识，须与飞控一致。
+
+## 二十七、工具：新增 `tools/i18n-verify.mjs`（把键真的查一遍）
+
+`i18n-check` 只能证明「键在语言包里」且「组件提到了它」。这**不能**证明一次查询会**返回中文**：键可能被放到了 i18next 查不到的位置、命名空间可能不对、组件可能给 `useTranslation` 传错了命名空间。所以写了这个校验器：用 esbuild 把真实的 `en.ts` / `zh-CN.ts` 打成一个模块，用**应用自己的 init 选项**初始化 i18next，然后对每张表的每个键断言 `t(key, { ns })` 等于预期的中文。
+
+它补上的正是这里最要紧的失效模式：**查询静默回退英文**。
+
+**它立刻抓到了一个 `tsc` 完全放过的真实缺陷**：`views` 命名空间里 `'radioHud'` 分组对象被写成了 **191 份重复对象**（上一条缺陷的残留，我上次只修了 `params.msp`）。i18next 解析 `radioHud.title` 时返回键名本身，即**界面会显示 `radioHud.title` 这样的原始键字符串**或回退英文。修法是删掉全部重复分组后按表重并。同批还核对了 `en.ts`/`zh-CN.ts` 是否残留重复分组，现已干净。
+
+**验证（★ 实测）**：`i18n-verify` **1547 个唯一键全部解析为中文**（14 张表）；`i18n-check` 14 张表全部 OK；`--dump` 往返 **2747 键**、语言包字节不变。
+
+**口径**：全局 **3397 → 2819**（累计 -578）。
+
+## 二十八、第二十轮：第三波并行（4 个文件）+ 我修掉两个自己引入的「翻译会过期」缺陷
+
+| # | 文件 | 条数 | 命名空间 / 前缀 |
+|---|---|---|---|
+| 99 | `components/mavlink-config/ParameterTable.tsx` | 129 | `params` / `paramTable` |
+| 100 | `components/parameters/PortsTab.tsx` | 49 | `params` / `portsTab` |
+| — | 复用既有键而非重复定义 | 33 | `ParameterTable` 复用 `paramsView.group-label` 与 `group.*`／`palette.*` |
+
+`ParameterTable` 与 `ParametersView` 渲染同一批 `PARAMETER_GROUPS` / `NON_DEFAULT_COLORS` 数据，我在派单时明确要求**复用** `group.*` / `palette.*` 键、不得重复定义，两处共用一份中英对照。
+
+### 我在交错编辑中引入、并在检查中发现的两个缺陷
+
+`eslint` 的 `react-hooks/exhaustive-deps` 从 71 条涨到 73 条，多出的两条都不是既有告警，而是我这一轮引入的**真实缺陷**：
+
+| 位置 | 问题 | 影响 |
+|---|---|---|
+| `MspConfigView.tsx:2266` | `loadConfig`（`useCallback(…, [])`）里用了 hook 的 `t`，却没进依赖 | 该回调只在挂载时创建一次，闭包里的 `t` 被 react-i18next **固定成初始语言**；语言切换后，配置加载失败的报错仍是旧语言 |
+| `RadioHudView.tsx:1874` | `rescan`（`useCallback(…, [loadFromCard])`）同上 | 插卡扫描的提示语在切换语言后不更新 |
+
+**修法为什么不只是「把 `t` 加进依赖」**：加了以后 `loadConfig` / `rescan` 会在语言切换时重建，进而触发 `useEffect` **额外重读一次飞控配置 / 重新扫描一次 SD 卡**。重读配置会顺带把 `pidRatesModified` / `rebootNeeded` 置回 false——**可能吞掉用户尚未保存的改动**，代价明显大于收益。所以改为读仓库里已导出的 `i18n` 单例（`stores/settings-store.ts` 已有先例）：单例在**调用时**才决定当前语言，既不会过期，也不需要重建回调。
+
+**这次修的时候我又犯了一次低级错误（如实记录）**：插入 import 时我把 `import { useTranslation } from 'react-i18next';` 同时写进了「新增部分」和「保留部分」，于是该行出现两次，`tsc` 报 TS2300 重复标识符。已删除多余一行。
+
+**验证（★ 实测）**：`tsc --noEmit` 通过；`turbo run build` **12/12**；`vitest` **305 文件 / 3245 通过 / 2 跳过**；`eslint` **0 error / 71 warning**（回到改动前的基线，两条新增告警已消除）；16 张表 `i18n-check` 全 OK；`i18n-verify` **1725 个唯一键全部解析为中文**；`en.ts` / `zh-CN.ts` 无重复分组；`--dump` 往返幂等。
+
+**产物层面（★ 实测）**：重新构建后，`apps/desktop/out/renderer/assets/index-*.js` 中确实能检索到中文文案，例如 `遥控链路 HUD`、`舵机自动微调`、`按单位分轴`、`缺少：`、`安全开关启用，按住解除`、`正在加载你的设置`、`自动网格（铺满此屏幕）`、`对比参数`、`上一步`、`跳过此导览`。这是「用户可见」而非「只加了键」的证据。
+
+**口径**：全局 **3397 → 2788**（累计 -609）。其中 `-652` 是「已并入语言包的键」减去扫描器口径误差的差额：`registry.tsx` 剩 96 条与 `RadioHudView` 剩 8 条属**渲染分支无法被正则感知**的高估，另有若干残留为协议/枚举名（按既定策略保留英文）。
