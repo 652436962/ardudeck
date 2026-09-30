@@ -9,8 +9,8 @@ name: Build Linux packages (fork)
 #   - Never publishes: artifacts only. The upstream workflow has
 #     `permissions: contents: write` because it attaches assets to a release;
 #     here `contents: read` is enough and strictly safer.
-#   - Accepts an optional PAT for the engine download. See "Fetch orchestrator
-#     engine" below for why the default GITHUB_TOKEN is not enough.
+#   - Extracts the engine binary from upstream's published Linux package (the
+#     pinned engine release is a Draft this fork cannot read); no PAT needed.
 #
 # Packaging toolchain note: `pnpm-lock.yaml` pins electron-builder@26.7.0, and a
 # clean `pnpm install` therefore installs that version. This matters — 26.7.0
