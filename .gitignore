@@ -135,3 +135,4 @@ target/
 .xdg/
 .node-gyp/
 .run/
+.npm-cache/
