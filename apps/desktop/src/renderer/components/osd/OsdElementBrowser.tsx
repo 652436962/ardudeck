@@ -144,7 +144,7 @@ export function OsdElementBrowser({ selectedElement, onSelect }: Props) {
       <div className="p-3 border-b border-subtle">
         <input
           type="text"
-          placeholder="Search elements..."
+          placeholder={t('browser.search-placeholder')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full bg-surface-raised text-content text-xs rounded px-2.5 py-1.5 border border-subtle focus:border-blue-500 focus:outline-none placeholder-content-tertiary"
@@ -265,7 +265,7 @@ function ElementRow({
         ${unsupported ? 'opacity-45' : ''}
       `}
       onClick={() => onSelect(def.id)}
-      data-tip={unsupported ? t('browser.unsupported') : osdText(t, def.descriptionKey, def.description)}
+      data-tip={unsupported ? t('unsupported') : osdText(t, def.descriptionKey, def.description)}
     >
       <input
         type="checkbox"

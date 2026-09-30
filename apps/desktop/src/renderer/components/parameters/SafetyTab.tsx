@@ -884,19 +884,19 @@ const SafetyTab = forwardRef<SafetyTabHandle, Props>(function SafetyTab({ isInav
             {showGpsPids && (
               <div className="grid grid-cols-3 gap-6 p-4 bg-surface-raised rounded-lg">
                 <div className="space-y-3">
-                  <h5 className="text-xs font-medium text-orange-400">Throttle</h5>
+                  <h5 className="text-xs font-medium text-orange-400">{t('safetyTab.gpsPid.throttle')}</h5>
                   <DraggableSlider label="P" value={gpsPids.throttleP} onChange={(v) => setGpsPids(prev => ({ ...prev, throttleP: v }))} min={0} max={200} color="#F97316" />
                   <DraggableSlider label="I" value={gpsPids.throttleI} onChange={(v) => setGpsPids(prev => ({ ...prev, throttleI: v }))} min={0} max={200} color="#FB923C" />
                   <DraggableSlider label="D" value={gpsPids.throttleD} onChange={(v) => setGpsPids(prev => ({ ...prev, throttleD: v }))} min={0} max={200} color="#FDBA74" />
                 </div>
                 <div className="space-y-3">
-                  <h5 className="text-xs font-medium text-blue-400">Velocity</h5>
+                  <h5 className="text-xs font-medium text-blue-400">{t('safetyTab.gpsPid.velocity')}</h5>
                   <DraggableSlider label="P" value={gpsPids.velP} onChange={(v) => setGpsPids(prev => ({ ...prev, velP: v }))} min={0} max={200} color="#3B82F6" />
                   <DraggableSlider label="I" value={gpsPids.velI} onChange={(v) => setGpsPids(prev => ({ ...prev, velI: v }))} min={0} max={200} color="#60A5FA" />
                   <DraggableSlider label="D" value={gpsPids.velD} onChange={(v) => setGpsPids(prev => ({ ...prev, velD: v }))} min={0} max={200} color="#93C5FD" />
                 </div>
                 <div className="space-y-3">
-                  <h5 className="text-xs font-medium text-green-400">Yaw</h5>
+                  <h5 className="text-xs font-medium text-green-400">{t('safetyTab.gpsPid.yaw')}</h5>
                   <DraggableSlider label="P" value={gpsPids.yawP} onChange={(v) => setGpsPids(prev => ({ ...prev, yawP: v }))} min={0} max={200} color="#22C55E" />
                 </div>
               </div>
