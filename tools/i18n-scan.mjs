@@ -191,15 +191,6 @@ function collectFromFile(file) {
   return findings;
 }
 
-function loadBundleKeys() {
-  const bundlePath = join(REPO_ROOT, 'apps/desktop/src/renderer/i18n/locales/en.ts');
-  const source = readFileSync(bundlePath, 'utf8');
-  const values = new Set();
-  for (const match of source.matchAll(/:\s*'((?:[^'\\]|\\.)*)'/g)) {
-    if (match[1]) values.add(match[1]);
-  }
-  return values;
-}
 
 function main() {
   const args = process.argv.slice(2);
@@ -208,7 +199,6 @@ function main() {
   const asJson = args.includes('--json');
   const strict = args.includes('--strict');
 
-  const bundleValues = loadBundleKeys();
   const files = walk(SCAN_ROOT);
   const byFile = new Map();
   const byText = new Map();
@@ -216,7 +206,13 @@ function main() {
   let total = 0;
 
   for (const file of files) {
-    const findings = collectFromFile(file).filter((f) => !bundleValues.has(f.text));
+    // No bundle-membership filter here on purpose. The English bundle is the
+    // SOURCE bundle, so any literal that has a translation key also exists in
+    // en.ts. Filtering on "is this text in the bundle?" therefore hides exactly
+    // the strings that are keyed but whose component has not been switched to
+    // t() yet — the most useful thing this scan can tell you. Whether a string
+    // is translated is decided by the t(...) checks during collection instead.
+    const findings = collectFromFile(file);
     if (!findings.length) continue;
     const rel = relative(REPO_ROOT, file);
     byFile.set(rel, findings);

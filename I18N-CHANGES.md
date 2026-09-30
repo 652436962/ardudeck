@@ -250,3 +250,37 @@
 4. `SafetyTab.tsx` 第 848 行的 `Apply "{SAFETY_PRESETS[...]?.name}" Preset`
 
 一个我评估后**回退**的改动（留痕）：`ui/PresetSelector.tsx` 是共享组件（8 个消费者），我一度把它的默认 `label`/`hint` 也接了 i18n；核对后发现这两个值**本来就是 props**（各调用点自己传中文/英文），改动无实际收益却扩大了范围，已 `git checkout` 还原，并移除了随之添加的未使用键。
+
+## 十、⚠️ 重要更正：扫描器有两处缺陷，此前多轮"清零"数字被高估（本轮修复）
+
+在第六轮推进时发现：扫描器**把"已翻译"判错了**，导致我此前报告的多处"清零"数字**不准确**。两处缺陷都已修复（提交见 git log）。
+
+### 缺陷 1：`*Key` 属性被当成"已翻译"
+
+原规则：一行里出现 `Key:` 就整行跳过。但迁移中途的行是这样的：
+
+```ts
+{ name: 'Takeoff', nameKey: 'takeoff', description: '…', descKey: '…' }
+```
+
+字面量仍在，而消费者可能还没接 `t()`。结果：我给 `mavlink-presets.ts` 加键后，该文件 128 条**全部消失**，看似"已完成"。修复：仅当该行**没有任何** `label/title/name/heading/description/tooltip/placeholder/hint` 字面量时才跳过。
+
+### 缺陷 2（更根本）：用"文本是否在 en.ts 里"判断"是否已翻译"
+
+原规则：`!bundleValues.has(text)` 过滤掉出现在英文包里的字符串。但 **`en.ts` 就是英文源包**——任何有键的文案必然同时存在于 en.ts 和组件里。于是这条过滤恰好隐藏了「**已加键、但组件仍渲染字面量**」这一最重要的一类。修复：删掉该过滤，不再使用 `loadBundleKeys()`。
+
+### 更正后的真实数字（★ 实测）
+
+| 区域 | 我此前报告 | 修正后真实值 | 说明 |
+|---|---|---|---|
+| 设置区 `components/settings/**` | 0（第二轮） | **66** | 真实遗漏：各下拉选项的硬编码 `label` 数组（帧型/机型、电池化学、OFF/自动/全量、Home/Terrain/Sea、模板分类等），例如 `label: 'Tricopter (3)'`、`label: 'LiPo (3.7V)'`、`label: 'Ackermann (car)'` |
+| `components/mission/**` | 1 | **3** | 多出 2 条同源漏检 |
+| `components/navigation/**` | 0 | **0** | 此项确实为 0（导航项存的是 `labelKey`） |
+| `mavlink-config` | 808 → 664 | **895** | 664 是缺陷 1 造成的假象；真实为 895（`FlightModesTab` 137、`mavlink-presets` 134、`SerialPortsTab` 65 …） |
+| 全局 | 4545 → 4105 | **4742** | |
+
+**结论**：`components/settings/**` 的"144 → 0"**不成立**，真实是 144 → 66。这是我的报告错误，特此更正并留痕。已翻译的部分（设置页外壳、单位、语言、GroupShape、Traffic、TileCache、Signing、SecureLink、vehicle-profile 各卡片）**仍然有效**；遗漏的是我当初按扫描器口径选范围时没看见的那些 `label:` 数组。
+
+### 教训
+
+用"字符串是否出现在英文包里"来判断翻译进度，在"英文包即源包"的结构下逻辑上就不成立。我当时把这个过滤当成便利启发式，没有验证它的语义——**两次误报（设置区清零、presets 清零）都源于此**。修复后这个工具才第一次给出可信的未翻译存量。
