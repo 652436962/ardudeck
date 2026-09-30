@@ -5,7 +5,7 @@ import { readStoredAppLanguage, writeStoredAppLanguage } from '../../shared/app-
 import { en } from './locales/en';
 import { zhCN } from './locales/zh-CN';
 
-export const I18N_NAMESPACES = ['common', 'settings', 'lua'] as const;
+export const I18N_NAMESPACES = ['common', 'settings', 'lua', 'osd'] as const;
 export type I18nNamespace = (typeof I18N_NAMESPACES)[number];
 
 export const i18nResources = {

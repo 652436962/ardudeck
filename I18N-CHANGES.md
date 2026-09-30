@@ -411,3 +411,17 @@
 - 工作树干净；`tsc` 通过；`turbo build` 10/10；`vitest` 281/281（3005 通过）
 - codemod 对已完成的 `lua-graph` 复跑 = 0 条（幂等成立）
 - 扫描器口径已修正：全局 4742 → 3673，其中约 1000 条是它此前误算的非界面文案
+
+## 十四、第十轮：OSD 元素注册表（82 条 → 0）
+
+| # | 位置 | 改动 |
+|---|---|---|
+| 58 | `utils/osd/element-registry.ts` | codemod 给 `OsdElementDefinition[]` 的 48 个条目加 `nameKey`/`descriptionKey`（实测 93 个有效键；扫描器报 82）；接口加**可选**键字段 |
+| 59 | `components/osd/OsdElementBrowser.tsx` | `OsdElementBrowser` 与内层 `ElementRow` 补 hook；新增本地 `osdText(t,key,fallback)`；**搜索按译文匹配**；`useMemo` 依赖补 `t`（否则切语言后列表不刷新） |
+| 60 | `i18n/locales/{en,zh-CN}.ts` + `i18n/index.ts` | `osd.auto.*` 93 条 + `osd.browser.unsupported`；注册 `osd` 命名空间 |
+
+**codemod 缺陷（本轮实测发现并修）**：它把 `previewText`（预览样例，如 `' 120m'`、`'11.8V'`）也当成了文案，产生 3 个孤立键。已把 `previewText` 加入 deny 列表，并删除孤立键。
+
+**验证（★ 实测）**：`tsc` 通过；`turbo build` 10/10；`vitest` 281/281（3005 通过）；`eslint` **0 error / 1 warning**（`moduleRev` 那条已在基线复现，属既有）；产物中 `飞行模式`、`电池电压`、`人工地平仪`、`距返航点距离`、`电调温度` 均可检索。
+
+**口径**：`utils/osd` **82 → 0**；全局 **3673 → 3591**。
