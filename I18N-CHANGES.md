@@ -506,3 +506,18 @@
 **验证（★ 实测）**：`tsc` 通过；`turbo build` 10/10；`vitest` 281/281（3005 通过）；`eslint` **0 error / 4 warning**（4 条均为未触及文件的既有告警）；产物含 `气压计`、`罗盘`、`测距雷达`、`视觉里程计`、`飞行中 FFT`。
 
 **口径**：该文件 **35 → 0**；全局 **3500 → 3465**。
+
+## 二十、第十六轮：`mavlink-config/ReceiverTab`（41 → 10）
+
+| # | 改动 |
+|---|---|
+| 74 | `RC_PROTOCOL_OPTIONS` 15 条加 `descriptionKey`（内联类型加可选字段）；协议**名称**（PPM/SBus/CRSF/ELRS 等）保留英文——是协议专名 |
+| 75 | 13 条界面文案接入 `receiver.*`：说明、接收机协议 + 提示、快速选择、全部协议、实时遥控通道、未检测到遥控信号、请检查 3 条、遥控校准 + 提示 |
+| 76 | `ReceiverTab` 与内层 `InfoBanner` 各补 hook；新增 `rcText(t,key,fallback)`；协议描述渲染点接入 |
+| 77 | 语言包 `receiver.*` 28 键中英双语；注册命名空间 |
+
+**剩余 10 条**：协议名（`Auto-Detect`/`All`/`SBus (NI)`/`DSM/Spektrum`/`FastSBUS`…）——ArduPilot 参数枚举名，须与飞控一致。
+
+**验证（★ 实测）**：`tsc` 通过；`turbo build` 10/10；`vitest` 281/281（3005 通过）；`eslint` 干净；产物含 `接收机协议`、`快速选择`、`实时遥控通道`、`未检测到遥控信号`、`遥控校准`。
+
+**口径**：全局 **3465 → 3434**。
