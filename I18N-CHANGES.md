@@ -212,3 +212,41 @@
 `presets/mavlink-presets.ts`（128，10 张数据表：飞行模式/技能/任务/安全/失效动作/解锁检查/围栏/电池/PID/速率）、`FlightModesTab.tsx`(130)、`SerialPortsTab.tsx`(62)、`MavlinkConfigView` 剩余 0、`parameters/SafetyTab.tsx`(48，属另一目录)。
 
 其中 `mavlink-presets.ts` 与 `SafetyTab`/`FlightModesTab` 强耦合（`SAFETY_PRESETS.*.description` 被 SafetyTab 引用），应作为一个单元一起改。
+
+## 九、第六轮（进行中）：`mavlink-presets.ts` 数据层（本轮新增）
+
+背景：用户选 A（`presets/mavlink-presets.ts` + `FlightModesTab.tsx` 作为一个单元）。本轮**只完成了该单元的数据层**，UI 渲染层尚未接入（见"未完成"一节）。
+
+### 已改动（逐条）
+
+| # | 位置 | 原文问题 | 修改内容 | 理由 | 证据等级 |
+|---|---|---|---|---|---|
+| 52 | `presets/mavlink-presets.ts` | 12 张表、69 组 `name`/`description` 硬编码 | 每个条目**新增** `nameKey`/`descKey`（键形如 `flightModePresets.beginner`、`failsafeActions.0`、`armingChecks.8192`）；9 个接口/内联类型同步加字段 | 键用 `<表><条目键>` 命名，天然规避不同表之间的同名冲突 | ★ 实测：`tsc` 通过；键数 69/69 |
+| 53 | `i18n/locales/en.ts` / `zh-CN.ts` | 无 | 新增 `mavlink.presetNames`(69) + `mavlink.presetDescriptions`(69)，中文按航空/固件惯例译（如 `SmartRTL`→智能返航、`Rangefinder`→测距雷达、`LiFePO4`→磷酸铁锂、`FuelLevel PWM`→油量 PWM） | 预设名称与说明是用户直接看到的文案 | ○ 术语判断，**需你审校** |
+
+### 关键设计决策：**保留** `name`/`description` 字段
+
+它们**没有**被删掉，而是与键并存。原因：`presets/__tests__/safety-presets.test.ts` 断言 `preset.name` / `preset.description` 非空。保留后该测试无需改动即可通过（★ 实测）。
+
+代价：`mavlink-presets.ts` 里同一份文案出现两次（字面量 + 键路径）。这是**有意为之的折中**，换取"不动既有断言"。若你更希望消除重复，我可以改为纯键并同步更新该测试——**属范围外，等你决定**。
+
+### 本轮验证证据（★ 实测）
+
+| 验证项 | 结果 |
+|---|---|
+| `tsc --noEmit` | 全绿 |
+| `turbo run build` | 10/10 成功 |
+| 产物校验 | bundle 中 `新手安全`×2、`测绘/航测`×2、`最高安全`、`智能返航`、`解锁前检查`×3、`BLHeli 电调`、`磷酸铁锂`×2 均可检索 |
+| `vitest` | **280/281 文件通过**；1 个失败为 `src/main/sitl/ardupilot-sitl-relaunch.test.ts`，**与本轮改动无关**（该测试未导入任何 i18n/presets 模块，且失败项在两次运行中不同——一次是 `respawns with the requested take-off point`，一次是 `tells the renderer...`，均为进程 spawn/kill 的 30s 超时抖动；当前沙箱对子进程生命周期有限制） |
+| 扫描器 | `mavlink-presets.ts` 的 128 条**尚未计入减少**，因为消费者仍在使用 `preset.name`（见下） |
+
+### 未完成（下一步）
+
+数据层已就绪，但**渲染层还没接入**，所以用户在界面上现在**仍看到英文预设名**。剩余工作：
+
+1. `SafetyTab.tsx` 的 `PRESET_SELECTOR_PRESETS`（3 条，`description` 来自 `SAFETY_PRESETS.*.description`）
+2. `FlightModesTab.tsx` 的 `COPTER_PRESET_SELECTOR` / `PLANE_PRESET_SELECTOR`（8 条）及其自身 130 条文案
+3. `BatteryTab.tsx`（3 处：`monitor.name`、`BATTERY_MONITORS[..].description`、`chemInfo.name`）
+4. `SafetyTab.tsx` 第 848 行的 `Apply "{SAFETY_PRESETS[...]?.name}" Preset`
+
+一个我评估后**回退**的改动（留痕）：`ui/PresetSelector.tsx` 是共享组件（8 个消费者），我一度把它的默认 `label`/`hint` 也接了 i18n；核对后发现这两个值**本来就是 props**（各调用点自己传中文/英文），改动无实际收益却扩大了范围，已 `git checkout` 还原，并移除了随之添加的未使用键。
