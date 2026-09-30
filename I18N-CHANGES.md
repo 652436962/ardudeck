@@ -373,3 +373,41 @@
 ### 结论：提速方案有效
 
 `lua-graph` 从"看起来 652 条、手工改法需多轮"变成"**187 条真实文案，一轮闭环**"。方法可复制到其他区域：**codemod 批量加键 → 消费者接入（含搜索）→ 批量译文 → 扫描器验证**。
+
+## 十三、进度登记：剩余工作量与固定流程（第九轮）
+
+### 已完成的（用户可见中文 / 或工具就绪）
+
+| 区域 | 状态 |
+|---|---|
+| 左侧导航栏（19 项 + 反馈问题） | ✅ 中文 |
+| 设置区外壳 + 各卡片（单位/语言/GroupShape/Traffic/TileCache/Signing/SecureLink/vehicle-profile 卡片） | ✅ 中文 |
+| 任务规划区（面板标题/地图控件/飞行信息/工具栏/航点表/命令菜单） | ✅ 中文 |
+| 设置页部分下拉选项（帧型/电池化学/Home-Terrain-Sea/模板分类等 66 条） | ❌ 仍英文（此前被扫描器缺陷掩盖） |
+| `lua-graph`（Lua 图形编辑器） | ✅ 中文（187 条，含搜索按译文匹配） |
+| `mavlink-config` 主视图 + 安全页 | ✅ 中文 |
+| 预设数据层（69 组 name/description 的键） | ⚠️ 键就绪，`FlightModesTab`/`BatteryTab`/`SafetyTab` 的 selector 与界面文案**仍英文** |
+| 其余约 25 个区域 | ❌ 未开始 |
+
+### 剩余量（`tools/i18n-scan.mjs` 口径，已修正为可信）
+
+全局 **3673** 条。Top 区域：`mavlink-config` 742、`parameters` 519、`companion` 171、`sitl` 153、`logs` 132、`panels` 118、`survey` 115、`map` 108、`utils` 106、`modes` 105、`legacy-config` 102、`servo-wizard` 99、`feature-tours` 96、`mission-library` 84、`quick-setup` 81、`calibration` 70、`radio-hud` 69、`connection` 64、`script-installer` 62、`firmware` 55。
+
+### 固定流程（每批照做）
+
+1. `node tools/i18n-codemod.mjs report <目录> --types=<条目类型>` —— **先量准**（例：lua-graph 扫描器报 652，真实 187）
+2. `... write ... --ns=<命名空间> --en-out=<片段>` —— 批量加键（幂等，可重复跑）
+3. 消费者接入 `t(key)`；**搜索/过滤也必须按译文**，否则中文用户搜不到
+4. 我逐条给中文译文 → 写入 `en.ts` / `zh-CN.ts`
+5. 门禁：`tsc` + `turbo build` + `vitest`（281 文件/3005 测试）+ `eslint`，且该区域扫描计数为 0
+6. 记录到本文件 → 提交并推送到 `github.com:652436962/ardudeck.git`
+
+### 新增资产：`tools/i18n-tm.json`
+
+从现有语言包提取的**译记忆**（346 条 英文→中文），用于后续批次复用，避免重复翻译相同文案（当前重复率 26.5%）。
+
+### 当前状态（★ 实测）
+
+- 工作树干净；`tsc` 通过；`turbo build` 10/10；`vitest` 281/281（3005 通过）
+- codemod 对已完成的 `lua-graph` 复跑 = 0 条（幂等成立）
+- 扫描器口径已修正：全局 4742 → 3673，其中约 1000 条是它此前误算的非界面文案
