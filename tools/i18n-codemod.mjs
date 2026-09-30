@@ -50,6 +50,8 @@ const IDENTIFIER_PROPS = new Set([
   // Not copy, despite being string literals: a data-flow direction and a code
   // default. Caught by the lua-graph pilot, which reported 151 of the former.
   'direction', 'defaultValue', 'operator', 'scope', 'target',
+  // Preview sample text ('11.8V', 'ARMED') shown as a glyph preview, not copy.
+  'previewText',
 ]);
 
 function toKey(text) {
