@@ -440,3 +440,17 @@
 **验证（★ 实测）**：`tsc` 通过；`turbo build` 10/10；`vitest` 281/281（3005 通过）；`eslint` 无输出；产物含 `失效保护行为`、`高度模式`、`健全性检查`、`解锁安全`、`GPS 救援`。
 
 **口径**：全局 **3673 → 3537**（本轮 OSD 82 + SafetyTab 57 的贡献）。
+
+## 十六、第十二轮（进行中）：`FlightModesTab` 部分完成
+
+**已完成**：
+- `COPTER_MODES` / `PLANE_MODES`（47 条）加 `descKey`（内联 `Record` 类型增加可选 `descKey`）
+- `SWITCH_POSITIONS`（3 条）加 `labelKey`
+- `MODE_PWM_RANGES`（9 条）加 `labelKey`
+- 语言包键已生成于 `.run/fm-pairs.json`（尚未写入 en/zh 包）
+
+**关键判断（需保留）**：**飞行模式名不翻译**。`Stabilize`/`Acro`/`AltHold`/`Auto`/`Guided`/`Loiter`/`RTL`/`SmartRTL` 等是用户必须与飞控显示逐一对照的专有名词，翻译会导致对不上。只译其**说明**（description）与开关档位文案。
+
+**未完成**：消费者接入（渲染点 601/630/641 等仍读 `modeInfo.name` / `pos.name`）、50 条中文译文、7 条 JSX 文案。
+
+**口径**：`FlightModesTab` 137 → 128（部分）；全局 3537 → 3529。
