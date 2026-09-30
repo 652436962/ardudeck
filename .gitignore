@@ -127,3 +127,11 @@ graphify-out/
 
 # Rust build artifacts (cargo target dirs, never committed)
 target/
+
+# Local toolchain/scratch dirs used when building inside a restricted sandbox
+# (cargo registry mirror, pnpm XDG dirs, node-gyp headers). Regenerable; never
+# committed. Note `target/` above already covers cargo build output.
+.cargo-home/
+.xdg/
+.node-gyp/
+.run/
