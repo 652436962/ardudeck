@@ -178,3 +178,37 @@
 6. **含变量的句子未逐句本地化**：`SecureLinkCompliance` 的三态文案、`ProfileApplyOverlay` 的 toast、`SnapshotList` 的 `${reason}` 等由 store 生成；要彻底本地化需把 store 内文案也纳入 i18n（属新范围，需你批准）。
 
 
+
+## 八、第五轮：`mavlink-config` 前两屏（本轮新增）
+
+范围：`apps/desktop/src/renderer/components/mavlink-config/**`，扫描器口径 **988 → 808**（本轮完成 `MavlinkConfigView` 与 `SafetyTab`）。
+
+### 改动清单（逐条）
+
+| # | 位置 | 原文问题 | 修改内容 | 理由 | 证据等级 |
+|---|---|---|---|---|---|
+| 48 | `MavlinkConfigView.tsx` | 37 个 TabGroup/Tab 的 `name`/`description` 硬编码，渲染点 5 处 | 接口改 `nameKey`/`descKey`；TabGroup 接口去掉 `description`（该字段从未渲染）；22 个名称键 + 30 个描述键进语言包；`modes`（飞行/驾驶模式）与 `pid`（copter/rover）冲突用 `modes-drive` / `pid-rover` 消歧 | 数据表在模块作用域，不能调 hook | ★ 实测：`tsc` 0 新增错误；扫描器该文件 0 |
+| 49 | `MavlinkConfigView.tsx` | 9 处界面文案（Loading/Reboot Required/Write Parameters to Flash/3 个列头/3 个 tooltip） | 新增 `mavlink.view.*` | 补齐该文件 | ★ 实测 |
+| 50 | `SafetyTab.tsx` | 76 处界面文案（13 个 enum 动作选项、4 个区块标题+说明、5 个带参数名的标签、状态/表头） | 新增 `mavlink.safety.*`（options/common/rcSignalLost/datalinkLost/lowBattery/criticalBattery/geofence/autoDisarm/labels/states/table/presetsNamed 共 12 个子分组）；`SafetyTab` 与 `Px4SafetyConfig` 各补 hook | 安全关键页必须完整本地化 | ★ 实测：替换脚本对每处校验出现次数；`tsc` 通过 |
+| 51 | `__tests__/issue-50-low-battery-fix.test.ts` | 断言逐字检查源码里的 `value={0}>Disabled` 等英文文案，i18n 化后必然失败 | 断言改为检查 `value={0}>{t('safety.options.disabled')}`；区块边界从 `'Low Battery'` 改为 `safety.lowBattery.heading` 键 | 断言意图是「0/1/2 三个取值存在」，不是文案本身；**这是我主动改测试，请审**（测试文件改动见 git diff） | ★ 实测：改前 5 失败，改后 281/281、3005 通过 |
+
+### 本轮验证证据（★ 全部实测）
+
+| 验证项 | 结果 |
+|---|---|
+| `tsc --noEmit` | 全绿（无输出） |
+| `turbo run build` | 10/10 成功 |
+| `vitest run --root apps/desktop` | **281/281 文件、3005 通过、0 失败** |
+| `eslint`（mavlink-config + i18n） | **0 error / 4 warning**，4 条均为既有问题（未触及的文件） |
+| 产物校验 | bundle 中 `失效保护与围栏`、`遥控信号丢失`、`地理围栏`、`自动上锁`、`越界动作`、`写入参数到`、`需要重启` 均可检索 |
+| 扫描器 | `MavlinkConfigView` 0；`SafetyTab` 0（其 3 条 preset 名称随 `mavlink-presets.ts` 下轮处理）；`mavlink-config` 988 → 808 |
+
+### 一个我自己的诊断错误（留痕）
+
+本轮我一度报告「`SafetyTab` 剩余 48 条」，随后发现那 48 条属于 **`parameters/SafetyTab.tsx`**（不同目录），`mavlink-config/SafetyTab.tsx` 实际只剩 3 条 preset 名称。原因是我的 `endswith('SafetyTab.tsx')` 过滤匹配到了两个同名文件。**初版结论有误，已更正。**
+
+### 下一步（mavlink-config 剩余 808 的主体）
+
+`presets/mavlink-presets.ts`（128，10 张数据表：飞行模式/技能/任务/安全/失效动作/解锁检查/围栏/电池/PID/速率）、`FlightModesTab.tsx`(130)、`SerialPortsTab.tsx`(62)、`MavlinkConfigView` 剩余 0、`parameters/SafetyTab.tsx`(48，属另一目录)。
+
+其中 `mavlink-presets.ts` 与 `SafetyTab`/`FlightModesTab` 强耦合（`SAFETY_PRESETS.*.description` 被 SafetyTab 引用），应作为一个单元一起改。
