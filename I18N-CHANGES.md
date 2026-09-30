@@ -490,3 +490,19 @@
 **验证（★ 实测）**：`tsc` 通过；`turbo build` 10/10；`vitest` 281/281（3005 通过）；`eslint` 无输出；产物含 `串口配置`、`端口分配`、`常见配置`、`未分配`、`该载具没有可配置的串口`。
 
 **口径**：全局 **3521 → 3500**。
+
+## 十九、第十五轮：`arming-checks.ts`（35 → 0）
+
+| # | 改动 |
+|---|---|
+| 71 | codemod 给 `ARMING_CHECK_BITS` 加 `nameKey`/`descriptionKey`（36 个键）；`ArmingCheckBit` 接口加**可选**键字段 |
+| 72 | 消费者接入：`ArmingTab`（`b.name`/`b.description` 两处）、`PrearmPanel`（`nameFor()` 里的查找）；两处加 `acText(t,key,fallback)` 与 hook |
+| 73 | 语言包 `mavlink.armingChecks.*` 36 条中英双语 |
+
+**本轮踩到的两个坑（都是我自己造成的，已修）**：
+1. 我把 codemod 的键名规则记错成 `descKey`，实际是**属性名 + Key**，即 `descriptionKey`。`tsc` 报 TS2561 后改正。
+2. 生成语言包时中文映射**多出 12 个英文里不存在的键**，`tsc` 报 TS2353/TS1117。修法是**严格按英文键集过滤**（`zh = {k: ZH[k] for k, _ in enp}`），不再直接写入自己的字典。
+
+**验证（★ 实测）**：`tsc` 通过；`turbo build` 10/10；`vitest` 281/281（3005 通过）；`eslint` **0 error / 4 warning**（4 条均为未触及文件的既有告警）；产物含 `气压计`、`罗盘`、`测距雷达`、`视觉里程计`、`飞行中 FFT`。
+
+**口径**：该文件 **35 → 0**；全局 **3500 → 3465**。
