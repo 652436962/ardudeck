@@ -168,9 +168,18 @@ function collectFromFile(file) {
     }
 
     // Object-literal copy (data tables). Skipped when the line already routes
-    // through t(...) or uses a `*Key` property, which is how translated tables
-    // are written in this codebase.
-    if (!/\bt\(/.test(rawLine) && !/Key\s*:/.test(rawLine)) {
+    // through t(...) or carries only key properties, which is how translated
+    // tables are written in this codebase.
+    //
+    // The key check must be precise: a row can hold a *Key property AND an
+    // untranslated literal. Mid-migration a table row reads
+    // `label: 'Takeoff', labelKey: 'takeoff'`, and the raw label is still what a
+    // not-yet-migrated consumer renders. A bare /Key\s*:/ test therefore
+    // reported those rows as done — it once hid all 128 strings in
+    // mavlink-presets.ts. Only skip when no plain `label:`-style literal remains.
+    const hasKeyProp = /\b\w*Key\s*:/.test(rawLine);
+    const hasPlainLiteral = /\b(?:label|title|name|heading|description|tooltip|placeholder|hint)\s*:\s*'/.test(rawLine);
+    if (!/\bt\(/.test(rawLine) && !(hasKeyProp && !hasPlainLiteral)) {
       for (const match of rawLine.matchAll(OBJECT_COPY_RE)) {
         const value = match[2] ?? '';
         if (!isTranslatable(value)) continue;
