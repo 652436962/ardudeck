@@ -665,3 +665,20 @@
 **产物层面（★ 实测）**：重新构建后，`apps/desktop/out/renderer/assets/index-*.js` 中确实能检索到中文文案，例如 `遥控链路 HUD`、`舵机自动微调`、`按单位分轴`、`缺少：`、`安全开关启用，按住解除`、`正在加载你的设置`、`自动网格（铺满此屏幕）`、`对比参数`、`上一步`、`跳过此导览`。这是「用户可见」而非「只加了键」的证据。
 
 **口径**：全局 **3397 → 2788**（累计 -609）。其中 `-652` 是「已并入语言包的键」减去扫描器口径误差的差额：`registry.tsx` 剩 96 条与 `RadioHudView` 剩 8 条属**渲染分支无法被正则感知**的高估，另有若干残留为协议/枚举名（按既定策略保留英文）。
+
+## 二十九、第二十一轮：`Px4SitlTab`（61）+ `ScriptInstallModal`（78）
+
+| # | 文件 | 条数 | 命名空间 / 前缀 |
+|---|---|---|---|
+| 101 | `components/sitl/Px4SitlTab.tsx` | 61 | `views` / `sitl.px4` |
+| 102 | `components/script-installer/ScriptInstallModal.tsx` | 78 | `views` / `scriptInstall` |
+
+**本轮有一个必须记录的过程事故**：我先一口气派了 4 个子代理（`Px4SitlTab` + `mode-presets`、`ScriptInstallModal`、`companion-templates`、`AutoLaunchTab` + `servo-presets`），**4 个全部在刚开始就失败**，没有任何产出。我随后核对 `git status`，确认**工作区是干净的**——失败的代理没有留下半成品改动，因此无需回滚。改为一次只派 2 个后，两个都正常完成。这属于环境/并发层面的失败，不是代码问题；记下来是因为「代理失败」本身不能当作「没改过文件」的证据，必须实测。
+
+**顺手删掉一处死代码**：`ScriptInstallModal` 的子代理按模式加了 `siText` 辅助函数，但该文件的数据驱动文案全部来自运行时 manifest（类型在 `shared/script-installer-types.ts`），文件内没有任何静态表可以挂 `labelKey`，于是 `siText` **一次都没被调用**。仓库的 eslint 关掉了 `no-unused-vars`，所以它不会报错、会静默留下来。我已删除（`grep -c siText` = 0）。
+
+**需要合并端注意的约定**：该文件有 10 处把带行内 `<code>`/`<strong>` 的句子拆成 `-before`/`-after` 两个键，**连接用的空格写在值里面**（例如英文值以空格结尾）。合并工具按值原样写入、不做 trim，所以空格得以保留；若日后有人手工「清理」这些尾随空格，中英文的排版都会坏掉。
+
+**验证（★ 实测）**：`tsc --noEmit` 通过；`turbo run build` **12/12**；`vitest` **305 文件 / 3245 通过 / 2 跳过**；`eslint` **0 error / 71 warning**（仍是既有基线）；18 张表 `i18n-check` 全 OK；`i18n-verify` **1864 个唯一键全部解析为中文**；语言包无重复分组。
+
+**口径**：全局 **3397 → 2720**（累计 -677）。
