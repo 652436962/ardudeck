@@ -425,3 +425,18 @@
 **验证（★ 实测）**：`tsc` 通过；`turbo build` 10/10；`vitest` 281/281（3005 通过）；`eslint` **0 error / 1 warning**（`moduleRev` 那条已在基线复现，属既有）；产物中 `飞行模式`、`电池电压`、`人工地平仪`、`距返航点距离`、`电调温度` 均可检索。
 
 **口径**：`utils/osd` **82 → 0**；全局 **3673 → 3591**。
+
+## 十五、第十一轮：`parameters/SafetyTab.tsx`（57 → 3）
+
+| # | 改动 |
+|---|---|
+| 61 | 6 张内联数据表加键：`FAILSAFE_PROCEDURES`(4)、`RECEIVER_TYPES`(4)、`BF_RECEIVER_PROVIDERS`(15)、`BF_QUICK_SELECT`(4)、`ALTITUDE_MODES`(3)、`SANITY_CHECKS`(3)。键形如 `safetyTab.failsafe_procedures.0.land`，描述用 `<key>.desc` |
+| 62 | 3 个被渲染的表接入 `stText(t,key,fallback)`（失效保护动作卡、高度模式、健全性检查）；`SafetyTab` 补 hook |
+| 63 | 17 条界面文案（Loading、Failsafe Behavior、Altitude Mode、Sanity、GPS Rescue PIDs、(Advanced)、Arming Safety、Navigation Arming Safety、Enabled、Require GPS fix…、Allow Bypass、Bypass Mode:、Receiver、Return to Home、Navigation 等）接入 `safetyTab.ui.*` |
+| 64 | 语言包：`params.safetyTab.*` 共 29 组 + 4 条接收机类型 + 17 条 ui；注册 `params` 命名空间 |
+
+**残余 3 条说明**：扫描器仍报 3 条，但我**本地逐行复刻扫描器逻辑得到 0**，且扫描器 `byText` 的首处位置指向 `mavlink-config/SafetyTab.tsx`（同名文件的共享重复文案）。这 3 条不是本文件的漏改，属扫描器的文件归属共享文案所致，**如实记录，不再追**。
+
+**验证（★ 实测）**：`tsc` 通过；`turbo build` 10/10；`vitest` 281/281（3005 通过）；`eslint` 无输出；产物含 `失效保护行为`、`高度模式`、`健全性检查`、`解锁安全`、`GPS 救援`。
+
+**口径**：全局 **3673 → 3537**（本轮 OSD 82 + SafetyTab 57 的贡献）。
