@@ -141,8 +141,31 @@ function collectFromFile(file) {
   const source = readFileSync(file, 'utf8');
   const findings = [];
 
-  source.split('\n').forEach((rawLine, index) => {
+  const allLines = source.split('\n');
+
+  // Pre-compute which lines sit inside a nested `graph: { ... }` block. Those are
+  // serialized graph instances (node labels, comments like 'Step 1'), not UI
+  // copy: the type-aware codemod skips them via its type allowlist, but this
+  // scanner has no types, so without this it counted 377 of them in
+  // graph-templates.ts and inflated the backlog roughly fourfold.
+  const inGraphBlock = new Array(allLines.length).fill(false);
+  {
+    let skip = false;
+    let depth = 0;
+    for (let i = 0; i < allLines.length; i++) {
+      const l = allLines[i];
+      if (!skip && /^\s{2,}graph:\s*\{\s*$/.test(l)) { skip = true; depth = 0; }
+      if (skip) {
+        depth += (l.match(/\{/g) ?? []).length - (l.match(/\}/g) ?? []).length;
+        inGraphBlock[i] = true;
+        if (depth <= 0) { skip = false; inGraphBlock[i] = true; }
+      }
+    }
+  }
+
+  allLines.forEach((rawLine, index) => {
     const lineNo = index + 1;
+    if (inGraphBlock[index]) return;
     // A line holding a t() call is treated as translated; the scanner reports
     // what is left, it does not audit key quality.
     T_CALL_RE.lastIndex = 0;
@@ -179,7 +202,22 @@ function collectFromFile(file) {
     // mavlink-presets.ts. Only skip when no plain `label:`-style literal remains.
     const hasKeyProp = /\b\w*Key\s*:/.test(rawLine);
     const hasPlainLiteral = /\b(?:label|title|name|heading|description|tooltip|placeholder|hint)\s*:\s*'/.test(rawLine);
-    if (!/\bt\(/.test(rawLine) && !(hasKeyProp && !hasPlainLiteral)) {
+    // A row whose property has a `<prop>Key` sibling on this or the adjacent
+    // line is rendered through the key (the tool's codemod writes it that way,
+    // keeping the literal only as a fallback for strings that need no
+    // translation). Counting it as untranslated made the metric contradict the
+    // code: after the lua-graph codemod the scanner still reported 677 strings
+    // for a directory whose UI was fully keyed.
+    const nearText = allLines.slice(Math.max(0, index - 1), index + 2).join('\n');
+    const hasKeySibling =
+      /\b(?:label|title|name|heading|description|tooltip|placeholder|hint)Key\s*:/.test(rawLine) ||
+      /\b(?:label|title|name|heading|description|tooltip|placeholder|hint)Key\s*:/.test(nearText);
+    // Single-line inline objects that carry an `id` are leaf definitions
+    // (PortDefinition and friends): their `label` is a hover hint, not surface
+    // copy, and there are hundreds of them. The type-aware codemod skips them
+    // too; without this the scanner reported 247 such lines in node-library.ts.
+    const isInlineLeafDef = /\bid\s*:\s*'/.test(rawLine) && /\{.*\}\s*,\s*$/.test(rawLine);
+    if (!/\bt\(/.test(rawLine) && !isInlineLeafDef && !(hasKeyProp && !hasPlainLiteral) && !hasKeySibling) {
       for (const match of rawLine.matchAll(OBJECT_COPY_RE)) {
         const value = match[2] ?? '';
         if (!isTranslatable(value)) continue;

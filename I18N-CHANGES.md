@@ -330,3 +330,46 @@
 ### 一个流程教训（留痕）
 
 我中途用 `cp` 做的备份不是"干净版本"（已含前次 codemod 输出），导致幂等缺陷被掩盖、又跑出重复键。后来改用 `git checkout` 取真正干净状态才发现问题。**codemod 的备份必须取自版本库，而不是自己的中间产物。**
+
+## 十二、第八轮：试点闭环 + 扫描器口径修正（用户选 A，本轮收尾）
+
+### 试点闭环（lua-graph 现在用户可见为中文）
+
+| # | 改动 | 说明 |
+|---|---|---|
+| 54 | `InspectorPanel.tsx` / `NodePalette.tsx` / `TemplateDialog.tsx` | 3 个消费者接入键；新增本地 `luaText(t, key, fallback)`：有键用键，无键回退字面量（codemod 会跳过 `'AND'` 这类全大写不需翻译的串） |
+| 55 | `NodePalette.tsx` / `TemplateDialog.tsx` | **搜索匹配也改为按译文**（`luaText(...).toLowerCase()`），否则用户用中文搜不到东西 |
+| 56 | `i18n/index.ts` | `I18N_NAMESPACES` 加入 `lua` 命名空间 |
+| 57 | `i18n/locales/{en,zh-CN}.ts` | 新增 `lua.auto.*` 187 条（en 取源码字面量，zh 为我逐条给出） |
+
+一个实测发现的坑：`TemplateDialog` 的 `GRAPH_TEMPLATES.filter((t) => ...)` 回调参数名 `t` **遮住了** `useTranslation` 返回的 `t`，导致 `tsc` 报"GraphTemplate 不能赋给 (key:string)=>string"。已把回调参数改名为 `tpl`。
+
+### 扫描器口径修正（两处，让数字与代码一致）
+
+| 问题 | 后果 | 修法 |
+|---|---|---|
+| 有 `<prop>Key` 兄弟属性的行仍被计入 | codemod 跑完界面已全键化，扫描器仍报 lua-graph 677 条，**与代码自相矛盾** | 该属性在本行或相邻行存在 `*Key` 兄弟时视为已迁移 |
+| 无类型意识：把 `graph: {...}` 内的图实例数据、以及单行内联 `PortDefinition` 当作界面文案 | 仅 `graph-templates.ts` 就虚增 **377** 条（'Step 1'、图内节点标签），`node-library.ts` 虚增 **247** 条（端口 `label`/`direction`） | 跳过 `graph: {` 嵌套块；跳过含 `id:` 的单行内联对象 |
+
+### 数字变化（★ 实测）
+
+| 口径 | 修正前 | 修正后 |
+|---|---|---|
+| 全局 | 4742 | **3673** |
+| `lua-graph` | 652 | **54** |
+
+也就是说：扫描器此前把**约 1000 条非界面文案**算成了待翻译工作量。这正是"翻译慢"的一个隐藏原因——**先量准，再翻译**。
+
+### 本轮验证证据（★ 全部实测）
+
+| 验证项 | 结果 |
+|---|---|
+| `tsc --noEmit` | 全绿 |
+| `turbo run build` | 10/10 成功 |
+| `vitest run --root apps/desktop` | **281/281 文件、3005 通过、0 失败** |
+| `eslint`（lua-graph + i18n） | 无输出（0 error / 0 warning） |
+| 产物校验 | bundle 中 `低电量告警`、`地理围栏告警`、`地形跟随`、`云台增稳`、`测距雷达`、`遥控辅助开关`、`看门狗定时器` 均可检索 |
+
+### 结论：提速方案有效
+
+`lua-graph` 从"看起来 652 条、手工改法需多轮"变成"**187 条真实文案，一轮闭环**"。方法可复制到其他区域：**codemod 批量加键 → 消费者接入（含搜索）→ 批量译文 → 扫描器验证**。
