@@ -1,0 +1,153 @@
+name: Build Linux packages (fork)
+
+# Fork-friendly packaging workflow.
+#
+# Differences from the upstream `.github/workflows/build.yml`:
+#   - Linux only. The upstream workflow also builds Windows x64 and macOS arm64,
+#     which roughly triples CI time for a fork that only needs Linux artifacts.
+#   - Runs on `workflow_dispatch` and on `v*` tags, so it is usable from a fork.
+#   - Never publishes: artifacts only. The upstream workflow has
+#     `permissions: contents: write` because it attaches assets to a release;
+#     here `contents: read` is enough and strictly safer.
+#   - Accepts an optional PAT for the engine download. See "Fetch orchestrator
+#     engine" below for why the default GITHUB_TOKEN is not enough.
+#
+# Packaging toolchain note: `pnpm-lock.yaml` pins electron-builder@26.7.0, and a
+# clean `pnpm install` therefore installs that version. This matters — 26.7.0
+# accepts the `@ardudeckdesktop` executable name produced by the scoped package
+# name (`@ardudeck/desktop`), which `apps/desktop/afterPack.cjs` wraps with
+# `--no-sandbox`. Newer electron-builder releases reject that name as unsafe for
+# file paths, so do not float this dependency without also fixing afterPack.cjs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional version/tag label for the artifact names (e.g. v0.1.2). Leave empty to use package.json.'
+        required: false
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${{ github.ref_name }}"
+          elif [ -n "${{ inputs.release_tag }}" ]; then
+            TAG="${{ inputs.release_tag }}"
+          fi
+          if [ -n "$TAG" ]; then
+            VERSION="${TAG#v}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "BUILD_NAME=ArduDeck-${VERSION}-linux" >> "$GITHUB_ENV"
+          echo "Building version ${VERSION}"
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      # Native modules in this app need the udev/usb dev headers to build
+      # (node-pty, serialport, usb).
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev libusb-1.0-0-dev
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Sync version into package manifests
+        run: |
+          node -e "
+            const fs = require('fs');
+            for (const p of ['./package.json', './apps/desktop/package.json']) {
+              const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+              pkg.version = process.env.VERSION;
+              fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
+            }
+          "
+
+      # `pnpm package` runs apps/desktop/scripts/stage-frame.mjs, which needs cargo
+      # to compile crates/ardudeck-frame's `frame_blueprint` binary.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # On Linux `fetch-sim-engine.mjs` is a no-op, so the binary has to be built
+      # and staged here or Resources/sim-engine ships empty.
+      - name: Build and stage sim-engine
+        run: |
+          cargo build --release --manifest-path crates/ardudeck-sim-engine/Cargo.toml
+          mkdir -p apps/desktop/sim-engine-bin
+          cp crates/ardudeck-sim-engine/target/release/ardudeck-sim-engine apps/desktop/sim-engine-bin/ardudeck-sim-engine
+          chmod +x apps/desktop/sim-engine-bin/ardudeck-sim-engine
+
+      # mediamtx is gitignored, so without this Resources/bin ships empty and
+      # every RTSP/SRT/RTP feed fails with "Video engine not installed".
+      - name: Fetch mediamtx (linux x64)
+        run: node tools/fetch-mediamtx.mjs linux x64
+
+      - name: Check engine-download credentials
+        env:
+          # A PAT with read access to rubenCodeforges/ardudeck is required: the
+          # pinned engine release (orchestrator-v0.1.1) is a DRAFT, so its assets
+          # return 404 to anonymous requests and are invisible to this fork's
+          # GITHUB_TOKEN. Add the token as a repository secret named GH_TOKEN.
+          TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::warning title=GH_TOKEN not set::The orchestrator engine release is a draft on the upstream repo. Without a GH_TOKEN secret (a PAT with read access to rubenCodeforges/ardudeck) the next step fails with 404. Create one at https://github.com/settings/tokens and add it as a repository secret named GH_TOKEN."
+          else
+            echo "GH_TOKEN secret is present."
+          fi
+
+      - name: Build renderer/main bundles
+        run: pnpm build
+
+      # Falls back to GITHUB_TOKEN so this still works if the engine releases ever
+      # become public (or if this workflow is reused in a repo that owns them).
+      - name: Fetch orchestrator engine
+        working-directory: apps/desktop
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: node scripts/fetch-engine.mjs
+
+      - name: Package Linux (AppImage + deb)
+        working-directory: apps/desktop
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/stage-frame.mjs
+          npx electron-builder --linux --publish never
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BUILD_NAME }}-AppImage
+          path: apps/desktop/release/*.AppImage
+          if-no-files-found: error
+
+      - name: Upload deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BUILD_NAME }}-deb
+          path: apps/desktop/release/*.deb
+          if-no-files-found: warn
