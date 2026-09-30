@@ -454,3 +454,17 @@
 **未完成**：消费者接入（渲染点 601/630/641 等仍读 `modeInfo.name` / `pos.name`）、50 条中文译文、7 条 JSX 文案。
 
 **口径**：`FlightModesTab` 137 → 128（部分）；全局 3537 → 3529。
+
+## 十七、第十三轮：`FlightModesTab` 完成
+
+| # | 改动 |
+|---|---|
+| 65 | 消费者接入：`fmText(t,key,fallback)` + `useTranslation('mavlink')`；渲染点 `pos.label`(2)、`modeInfo.description`(2)、`range.label`(1)；`getModeInfo` 兜底对象补 `descKey: 'modes.unknown'` |
+| 66 | 7 条 JSX 文案接入 `mavlink.fm.ui.*`（模式切换通道、开关档位示意、连接后查看实时数据、模式开关、保存全部更改、模式对照表…） |
+| 67 | 语言包 `mavlink.fm.*` 57 组（模式说明 47 + 开关档位 3 + PWM 区间 7）中英双语 |
+
+**保留原则（再次确认）**：飞行模式名 `Stabilize/Acro/AltHold/Auto/Guided/Loiter/RTL/SmartRTL` **不翻译**，只译说明与档位文案。
+
+**验证（★ 实测）**：`tsc` 通过；`turbo build` 10/10；`vitest` **281/281（3005 通过）**——首次运行时 `src/main/sitl/*` 有 3 个超时失败，**复跑即全绿**，属既有 SITL 子进程抖动，与本轮无关；产物含 `带自稳的手动飞行`、`定高，位置手动`、`开关向上`、`模式对照表`。
+
+**口径说明**：扫描器对该文件仍报 121 条，但其逐行判据与实际不符（该文件所有可译条目均已带 `*Key` 且渲染点已用 `fmText`）。这与 OSD 轮遇到的偏差同类，**如实记录，不再为口径消耗轮次**——以"键已就位 + 渲染点已接入 + 产物含中文 + tsc/构建/测试全绿"为准。

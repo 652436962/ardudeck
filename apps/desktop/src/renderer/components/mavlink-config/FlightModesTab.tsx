@@ -6,6 +6,12 @@
  */
 
 import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react';
+
+/** Prefer the i18n key; fall back to the literal (mode tables keep both). */
+function fmText(t: (key: string) => string, key: string | undefined, fallback: string): string {
+  return key ? t(key) : fallback;
+}
+import { useTranslation } from 'react-i18next';
 import {
   Settings,
   Shield,
@@ -229,7 +235,7 @@ function getModesForCategory(category: VehicleCategory) {
 
 function getModeInfo(modeNum: number, category: VehicleCategory = 'copter') {
   const modes = getModesForCategory(category);
-  return modes[modeNum] ?? { name: 'Unknown', description: 'Unknown mode', icon: HelpCircle, safe: false };
+  return modes[modeNum] ?? { name: 'Unknown', description: 'Unknown mode', descKey: 'modes.unknown', icon: HelpCircle, safe: false };
 }
 
 interface FlightModesTabProps {
@@ -237,6 +243,7 @@ interface FlightModesTabProps {
 }
 
 const FlightModesTab: React.FC<FlightModesTabProps> = ({ vehicleCategory = 'copter' }) => {
+  const { t } = useTranslation('mavlink');
   const isRover = vehicleCategory === 'rover';
   const firmware = useConnectionStore((s) => s.connectionState.firmware);
   const { parameters, setParameter, modifiedCount } = useParameterStore();
@@ -403,7 +410,7 @@ const FlightModesTab: React.FC<FlightModesTabProps> = ({ vehicleCategory = 'copt
           /* Default state: dropdown + detect button */
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-medium text-content">Mode Switch Channel</h3>
+              <h3 className="text-sm font-medium text-content">{t('fm.ui.modeSwitchChannel')}</h3>
               <p className="text-xs text-content-secondary mt-0.5">Which RC channel controls {isRover ? 'drive modes' : 'flight modes'}</p>
             </div>
             <div className="flex items-center gap-2">
@@ -438,7 +445,7 @@ const FlightModesTab: React.FC<FlightModesTabProps> = ({ vehicleCategory = 'copt
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-medium text-cyan-300">Detecting Mode Switch Channel</h3>
+                <h3 className="text-sm font-medium text-cyan-300">{t('fm.ui.detectingChannel')}</h3>
                 <p className="text-xs text-content-secondary mt-0.5">
                   {detectedChannel
                     ? `Channel ${detectedChannel} detected: use this channel?`
@@ -516,14 +523,14 @@ const FlightModesTab: React.FC<FlightModesTabProps> = ({ vehicleCategory = 'copt
       {/* Visual Switch Position Diagram */}
       <div className="bg-surface rounded-xl border border-subtle p-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-content">Switch Position Diagram</h3>
+          <h3 className="text-sm font-medium text-content">{t('fm.ui.switchDiagram')}</h3>
           {signalStatus === 'active' ? (
             <span className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] bg-green-500/20 text-green-400 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
               LIVE
             </span>
           ) : (
-            <span className="text-[10px] text-content-tertiary">Connect to see live data</span>
+            <span className="text-[10px] text-content-tertiary">{t('fm.ui.connectForLiveData')}</span>
           )}
         </div>
         <div className="flex items-center justify-center gap-8">
@@ -561,7 +568,7 @@ const FlightModesTab: React.FC<FlightModesTabProps> = ({ vehicleCategory = 'copt
                 )}
               </div>
             )}
-            <span className="text-xs text-content-secondary mt-2">Mode Switch</span>
+            <span className="text-xs text-content-secondary mt-2">{t('fm.ui.modeSwitch')}</span>
           </div>
 
           {/* Position to modes mapping */}
@@ -629,7 +636,7 @@ const FlightModesTab: React.FC<FlightModesTabProps> = ({ vehicleCategory = 'copt
                       <div className={`text-sm font-medium ${isPositionActive ? 'text-cyan-400' : 'text-content'}`}>
                         {pos.name}
                       </div>
-                      <div className="text-[10px] text-content-secondary">{pos.label}</div>
+                      <div className="text-[10px] text-content-secondary">{fmText(t, pos.labelKey, pos.label)}</div>
                     </div>
                     <div className="flex-1 flex items-center gap-2">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
@@ -691,7 +698,7 @@ const FlightModesTab: React.FC<FlightModesTabProps> = ({ vehicleCategory = 'copt
                         <div className={`w-2 h-2 rounded-full ${pos.color}`} />
                         <span className="text-sm font-medium text-content">{pos.name}</span>
                       </div>
-                      <div className="text-xs text-content-secondary">{pos.label}</div>
+                      <div className="text-xs text-content-secondary">{fmText(t, pos.labelKey, pos.label)}</div>
                     </div>
                     {isActive && (
                       <span className="ml-auto px-2 py-0.5 text-[10px] bg-cyan-500/20 text-cyan-400 rounded-full">
@@ -718,7 +725,7 @@ const FlightModesTab: React.FC<FlightModesTabProps> = ({ vehicleCategory = 'copt
                   </select>
 
                   {/* Mode Description */}
-                  <p className="text-xs text-content-secondary">{modeInfo.description}</p>
+                  <p className="text-xs text-content-secondary">{fmText(t, modeInfo.descKey, modeInfo.description)}</p>
                 </div>
               );
             })}
@@ -765,7 +772,7 @@ const FlightModesTab: React.FC<FlightModesTabProps> = ({ vehicleCategory = 'copt
                             <span className={`w-2 h-2 rounded-full ${positionInfo.color}`} />
                           )}
                         </div>
-                        <div className="text-xs text-content-secondary">{range.label}</div>
+                        <div className="text-xs text-content-secondary">{fmText(t, range.labelKey, range.label)}</div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -813,7 +820,7 @@ const FlightModesTab: React.FC<FlightModesTabProps> = ({ vehicleCategory = 'copt
                   </select>
 
                   {/* Mode Description */}
-                  <p className="text-xs text-content-secondary">{modeInfo.description}</p>
+                  <p className="text-xs text-content-secondary">{fmText(t, modeInfo.descKey, modeInfo.description)}</p>
                 </div>
               );
             })}
@@ -826,14 +833,14 @@ const FlightModesTab: React.FC<FlightModesTabProps> = ({ vehicleCategory = 'copt
         <div className="bg-amber-500/10 rounded-xl border border-amber-500/30 p-4 flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-400" />
           <p className="text-sm text-amber-400">
-            You have unsaved changes. Click <span className="font-medium">"Save All Changes"</span> in the header to save.
+            You have unsaved changes. Click <span className="font-medium">{t('fm.ui.saveAllChanges')}</span> in the header to save.
           </p>
         </div>
       )}
 
       {/* Mode Reference */}
       <div className="space-y-3">
-        <h3 className="text-sm font-medium text-content">Mode Reference</h3>
+        <h3 className="text-sm font-medium text-content">{t('fm.ui.modeReference')}</h3>
         <div className="bg-surface rounded-xl border border-subtle p-4">
           <div className="grid grid-cols-3 gap-3">
             {Object.entries(getModesForCategory(vehicleCategory))
