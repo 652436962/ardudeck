@@ -92,9 +92,9 @@ export function FlightPreviewPanel() {
           value={groupId ?? ''}
           onChange={(e) => setGroupId(e.target.value === '' ? null : e.target.value)}
           className="h-8 px-2 rounded-md bg-surface-input border border-subtle text-xs text-content focus:outline-none focus:border-cyan-500"
-          data-tip="Which waypoint group to preview"
+          data-tip={t('preview.group-tip')}
         >
-          <option value="">Entire mission</option>
+          <option value="">{t('preview.entireMission')}</option>
           {groupOptions.map((g) => (
             <option key={g.id} value={g.id}>
               {g.name} ({g.count} WPs)

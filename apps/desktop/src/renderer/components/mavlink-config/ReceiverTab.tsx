@@ -486,10 +486,10 @@ const ReceiverTab: React.FC = () => {
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-surface text-content-secondary">
-                <th className="px-3 py-2 text-left font-medium">Channel</th>
-                <th className="px-3 py-2 text-right font-medium">Min</th>
-                <th className="px-3 py-2 text-right font-medium">Trim</th>
-                <th className="px-3 py-2 text-right font-medium">Max</th>
+                <th className="px-3 py-2 text-left font-medium">{t('col.channel')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('col.min')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('col.trim')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('col.max')}</th>
               </tr>
             </thead>
             <tbody>

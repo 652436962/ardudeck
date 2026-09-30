@@ -85,6 +85,11 @@ function main() {
   }
 
   const bundles = loadBundles();
+  // A key can legitimately be keyed by hand and live only in the bundle — not
+  // every string went through a table. Such a key is not a defect just because
+  // no table declares it.
+  const inBundle = new Set();
+  for (const [ns, inner] of bundles) for (const k of inner.keys()) inBundle.add(`${ns}.${k}`);
 
   // Two tables may share a prefix (`logs.*` has both a main table and a Y-mode
   // sub-table). A key this file references but this table does not declare is
@@ -121,7 +126,9 @@ function main() {
     const source = scanFiles.map((f) => readFileSync(join(REPO_ROOT, f), 'utf8')).join('\n');
     const used = keysInSource(source, prefixes);
 
-    const usedNotDeclared = [...used].filter((k) => !allDeclared.has(k)).sort();
+    const usedNotDeclared = [...used]
+      .filter((k) => !allDeclared.has(k) && !inBundle.has(`${ns}.${k}`))
+      .sort();
     const declaredNotUsed = [...declared].filter((k) => !used.has(k)).sort();
 
     const missing = [];

@@ -205,9 +205,9 @@ const Px4SerialPortsConfig: React.FC = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-surface text-content-secondary text-xs">
-                  <th className="px-3 py-2.5 text-left font-medium w-36">Port</th>
-                  <th className="px-2 py-2.5 text-left font-medium w-32">Baud Rate</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Assigned Functions</th>
+                  <th className="px-3 py-2.5 text-left font-medium w-36">{t('serialPorts.col.port')}</th>
+                  <th className="px-2 py-2.5 text-left font-medium w-32">{t('serialPorts.col.baud-rate')}</th>
+                  <th className="px-3 py-2.5 text-left font-medium">{t('serialPorts.col.assigned-functions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -284,9 +284,9 @@ const Px4SerialPortsConfig: React.FC = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-surface text-content-secondary text-xs">
-                  <th className="px-3 py-2.5 text-left font-medium w-64">Function</th>
-                  <th className="px-2 py-2.5 text-left font-medium w-48">Port</th>
-                  <th className="px-3 py-2.5 text-left font-medium">Description</th>
+                  <th className="px-3 py-2.5 text-left font-medium w-64">{t('serialPorts.col.function')}</th>
+                  <th className="px-2 py-2.5 text-left font-medium w-48">{t('serialPorts.col.port')}</th>
+                  <th className="px-3 py-2.5 text-left font-medium">{t('serialPorts.col.description')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -471,10 +471,10 @@ const ArduPilotSerialPorts: React.FC = () => {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-surface text-content-secondary text-xs">
-                <th className="px-3 py-2.5 text-left font-medium w-36">Port</th>
-                <th className="px-2 py-2.5 text-left font-medium w-44">Protocol</th>
-                <th className="px-2 py-2.5 text-left font-medium w-32">Baud Rate</th>
-                <th className="px-3 py-2.5 text-center font-medium w-24">Status</th>
+                <th className="px-3 py-2.5 text-left font-medium w-36">{t('serialPorts.col.port')}</th>
+                <th className="px-2 py-2.5 text-left font-medium w-44">{t('serialPorts.col.protocol')}</th>
+                <th className="px-2 py-2.5 text-left font-medium w-32">{t('serialPorts.col.baud-rate')}</th>
+                <th className="px-3 py-2.5 text-center font-medium w-24">{t('serialPorts.col.status')}</th>
               </tr>
             </thead>
             <tbody>

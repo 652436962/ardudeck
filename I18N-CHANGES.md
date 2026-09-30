@@ -682,3 +682,59 @@
 **验证（★ 实测）**：`tsc --noEmit` 通过；`turbo run build` **12/12**；`vitest` **305 文件 / 3245 通过 / 2 跳过**；`eslint` **0 error / 71 warning**（仍是既有基线）；18 张表 `i18n-check` 全 OK；`i18n-verify` **1864 个唯一键全部解析为中文**；语言包无重复分组。
 
 **口径**：全局 **3397 → 2720**（累计 -677）。
+
+## 三十、第二十二轮：补漏 5 处 + **发现一类严重既有缺陷：642 个查询解析不到键**
+
+### 30.1 本轮补齐的真实漏译（★ 实测）
+
+上一轮我按扫描器残留把这些文件判为「已完成」，本轮逐个复核源码后发现**其中一部分是漏译**，已补：
+
+| 文件 | 漏掉的内容 | 新键 |
+|---|---|---|
+| `mavlink-config/SerialPortsTab.tsx` | 4 张表的表头 `Port`/`Baud Rate`/`Assigned Functions`/`Function`/`Description`/`Protocol`/`Status`（共 10 处） | `serialPorts.col.*` 7 键 |
+| `mavlink-config/ReceiverTab.tsx` | 遥控通道表表头 `Channel`/`Min`/`Trim`/`Max` | `col.*` 4 键 |
+| `osd/OsdElementBrowser.tsx` | 搜索框 `placeholder="Search elements..."` | `browser.search-placeholder` |
+| `mission/FlightPreviewPanel.tsx` | `<option>Entire mission</option>`、分组下拉的 `data-tip` | 复用既有 `preview.entireMission` + 新 `preview.group-tip` |
+| `parameters/SafetyTab.tsx` | GPS PID 三组标题 `Throttle`/`Velocity`/`Yaw` | `safetyTab.gpsPid.*` 3 键 |
+| `settings/SettingsView.tsx` | 载具档案编辑按钮 `title="Edit"` | 复用既有 `vehicleEditor.editTooltip` |
+
+**顺带修掉一个会让界面出现原始键名的真 bug**：`OsdElementBrowser.tsx:268` 写的是 `t('browser.unsupported')`，但语言包里只有 `unsupported`。该 tooltip 在两种语言下都会**直接显示字符串 `browser.unsupported`**。已改为 `t('unsupported')`。这是上一轮 OSD 工作留下的，当时只有 tsc/build/vitest 三道门，全都抓不到。
+
+### 30.2 新工具 `tools/i18n-audit.mjs`：全应用查询审计
+
+前一节的 bug 不是孤例，而是一整类。所以写了这个工具：遍历 `apps/desktop/src/renderer` 下每个源文件，取出所有 `t('…')` / `xxText(t,'…',…)` 字面量与 `<prop>Key: '…'`，与该文件实际 `useTranslation` 的命名空间配对，然后用真实的语言包跑 i18next 判断**是否解析得到**。分两级：
+
+- **NOWHERE**：任何命名空间里都没有这个键 → 界面必然显示键名本身；
+- **WRONG-NS**：键存在，但不在该文件加载的命名空间里 → 运行时同样显示键名。
+
+数据文件（没有 `useTranslation`）无法判断第二级，只判第一级。
+
+### 30.3 审计结果（★ 实测，这是本轮最重要的发现）
+
+**642 个键在 NO 命名空间中存在，另有 5 个只在文件未加载的命名空间里。** 也就是说，这些位置在界面上显示的是 `serialPorts.configHeading` 这样的**原始键字符串**，而不是英文或中文。
+
+根因：早期几轮（合并工具出现之前）由我手工写语言包，**组件/数据表里的键带了命名空间前缀，而语言包里的键没带**。例如：
+
+| 组件里写的 | 语言包里的 | 结果 |
+|---|---|---|
+| `t('serialPorts.configHeading')` | `configHeading` | ❌ 返回键名 |
+| `nameKey: 'lua.auto.low-battery-warning'` | `auto.low-battery-warning` | ❌ 返回键名 |
+| `t('osd.auto.flight-mode')` | `auto.osd.auto.flight-mode` | ❌ 返回键名 |
+| `t('receiver.rcProtocols.ppm-sum-signal')` | `rcProtocols.ppm-sum-signal` | ❌ 返回键名 |
+
+我用一个独立探针确认了这个判定（不是靠推断）：`t('serialPorts.configHeading',{ns:'serialPorts'})` 返回 `"serialPorts.configHeading"`，而 `t('configHeading',{ns:'serialPorts'})` 返回 `"Serial Port Configuration"`。
+
+**受影响的 16 个文件、642 键**（前几名）：`lua-graph/node-library.ts` 131、`mission/WaypointTablePanel.tsx` 83、`mavlink-config/presets/mavlink-presets.ts` 69、`mavlink-config/FlightModesTab.tsx` 64、`lua-graph/graph-templates.ts` 56、`parameters/SafetyTab.tsx` 37、`mavlink-config/arming-checks.ts` 36、`mavlink-config/MavlinkConfigView.tsx` 30、`SerialPortsTab.tsx` 22、`navigation/NavigationRail.tsx` 19、`utils/osd/element-registry.ts` 90。
+
+**这直接推翻了我前几轮对其中几个区域的「已完成」结论**：lua-graph、OSD 元素库、FlightModesTab 的键、SafetyTab、SerialPortsTab 的说明文字，实际上都显示为键名。当时的验收只有 tsc/build/vitest，三道门都无法发现运行时查询失败，而 `i18n-verify`/`i18n-audit` 是这一轮才有的。这是我的验收标准不完备造成的，不是子代理的问题。
+
+### 30.4 修复方案与为什么本轮没有直接改
+
+我写了 `tools/i18n-fix-keys.mjs` 做批量改写，试运行覆盖 417/647。但**试运行暴露出它会产生错误改写**，因此我没有落盘：
+
+- `mavlink.auto.airspeed`（早期坏 codemod 留下的脏键）被改写成 `lua` 命名空间里毫不相干的 `auto.airspeed`；
+- `RadioHudView` 里的 `left`（是布局数据，不是键）被改写成 `survey.panorama.side.left`。
+
+原因是我的两条候选规则（去掉首段 / 后缀匹配）都没有用**键旁边的英文原文**做校验。已在工具头部标注 **STATUS: NOT SAFE TO APPLY YET**，只保留 `--dry-run`（默认），留待下一轮先用「英文值必须与既有条目一致」把规则收紧后再执行。
+
+**验证（★ 实测）**：`tsc` 通过；`turbo build` 12/12；`vitest` 305 文件 / 3245 通过 / 2 跳过；`eslint` 0 error / 71 warning；`i18n-audit` 检查 66 文件 / 3077 个字面量。
