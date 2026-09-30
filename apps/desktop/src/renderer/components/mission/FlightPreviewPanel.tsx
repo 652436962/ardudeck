@@ -5,6 +5,7 @@
  * legs, holds, and camera-yaw changes are laid out over mission time.
  */
 import { useCallback, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useMissionStore } from '../../stores/mission-store';
 import { useFlightPreviewStore } from '../../stores/flight-preview-store';
 import { useFlightPreviewTimeline } from './FlightPreviewOverlay';
@@ -15,6 +16,7 @@ function fmtTime(ms: number): string {
 }
 
 export function FlightPreviewPanel() {
+  const { t } = useTranslation('mission');
   const missionItems = useMissionStore((s) => s.missionItems);
   const groups = useMissionStore((s) => s.groups);
   const playing = useFlightPreviewStore((s) => s.playing);
@@ -127,9 +129,9 @@ export function FlightPreviewPanel() {
           ))}
         </div>
         <div className="ml-auto flex items-center gap-3 text-[10px] text-content-tertiary">
-          <span className="flex items-center gap-1"><span className="w-3 h-1.5 rounded-sm bg-cyan-500/70" /> flight leg</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-1.5 rounded-sm bg-amber-500/80" /> hold</span>
-          <span className="flex items-center gap-1"><span className="w-px h-3 bg-purple-400" /> camera turns</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-1.5 rounded-sm bg-cyan-500/70" /> {t('preview.flightLeg')}</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-1.5 rounded-sm bg-amber-500/80" /> {t('preview.hold')}</span>
+          <span className="flex items-center gap-1"><span className="w-px h-3 bg-purple-400" /> {t('preview.cameraTurns')}</span>
         </div>
       </div>
 
