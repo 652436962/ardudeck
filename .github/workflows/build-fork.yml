@@ -114,32 +114,38 @@ jobs:
       - name: Fetch mediamtx (linux x64)
         run: node tools/fetch-mediamtx.mjs linux x64
 
-      - name: Check engine-download credentials
-        env:
-          # A PAT with read access to rubenCodeforges/ardudeck is required: the
-          # pinned engine release (orchestrator-v0.1.1) is a DRAFT, so its assets
-          # return 404 to anonymous requests and are invisible to this fork's
-          # GITHUB_TOKEN. Add the token as a repository secret named GH_TOKEN.
-          TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          if [ -z "$TOKEN" ]; then
-            echo "::error title=GH_TOKEN secret is missing::The orchestrator engine release is a DRAFT on rubenCodeforges/ardudeck, so this fork's GITHUB_TOKEN cannot see it. Create a PAT with read access to that repository (https://github.com/settings/tokens) and store it as a repository secret named GH_TOKEN."
-            exit 1
-          fi
-          echo "GH_TOKEN secret is present."
-
       - name: Build renderer/main bundles
         run: pnpm build
 
-      # Falls back to GITHUB_TOKEN so this still works if the engine releases ever
-      # become public (or if this workflow is reused in a repo that owns them).
-      # Runs after `pnpm build` because electron-builder stages this into the
-      # packaged Resources, and nothing else depends on the order.
-      - name: Fetch orchestrator engine
+      # The pinned engine release (orchestrator-v0.1.1 on rubenCodeforges/ardudeck)
+      # is a Draft invisible to this fork's tokens. Upstream's own `pnpm package`
+      # chain bundles the engine into every published installer (see
+      # apps/desktop/package.json), so we extract the same binary from upstream's
+      # public Linux deb instead. Bump UPSTREAM_PKG_TAG when adopting a newer
+      # upstream package; if upstream ever publishes the engine release, the
+      # original `gh release download` path can be restored from git history.
+      - name: Extract orchestrator engine from upstream public package
         working-directory: apps/desktop
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
-        run: node scripts/fetch-engine.mjs
+          UPSTREAM_PKG_TAG: v0.1.2-rc5
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          gh release download "$UPSTREAM_PKG_TAG" --repo rubenCodeforges/ardudeck \
+            --pattern 'ArduDeck-*-linux-amd64.deb' --dir "$workdir"
+          deb="$(ls "$workdir"/ArduDeck-*.deb | head -n1)"
+          dpkg-deb -x "$deb" "$workdir/extracted"
+          engine="$(find "$workdir/extracted" -type f -name 'ardudeck-orchestrator' | head -n1)"
+          if [ -z "$engine" ]; then
+            echo "::error title=Engine binary missing::ardudeck-orchestrator not found inside $deb"
+            exit 1
+          fi
+          mkdir -p engine
+          cp "$engine" engine/ardudeck-orchestrator
+          chmod +x engine/ardudeck-orchestrator
+          echo "Staged engine from $UPSTREAM_PKG_TAG:"
+          sha256sum engine/ardudeck-orchestrator
 
       - name: Package Linux (AppImage + deb)
         working-directory: apps/desktop
